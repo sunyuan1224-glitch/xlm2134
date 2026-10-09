@@ -1,0 +1,106 @@
+/*
+ * 设置对话框补充样式。
+ * 只对 .settings-dialog 内的子元素生效，不污染 styles.css 已有类名。
+ */
+
+.settings-dialog {
+  width: min(560px, calc(100vw - 32px));
+  outline: none;
+}
+
+/*
+ * 设置对话框要压过沉浸模式浮层（.immersive z-index: 900）与普通弹窗（.modal-mask 100）。
+ * 沉浸全屏时对话框被 portal 到 fullscreen 宿主内部，这个 z-index 保证它同样在最上层。
+ */
+/* 提高优先级：.modal-mask 在 styles.css 里后加载，单类选择器会被它覆盖 */
+.modal-mask.settings-mask {
+  z-index: 1100;
+}
+
+.set-hint {
+  margin: -4px 0 12px;
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.set-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.set-presets .btn {
+  padding: 5px 11px;
+  font-size: 12px;
+}
+
+.set-value {
+  float: right;
+  color: var(--accent);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.set-range {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.set-num {
+  width: 72px;
+  flex: none;
+  text-align: right;
+  padding: 4px 6px;
+}
+
+.set-step {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: var(--r-sm);
+}
+
+.set-preview {
+  background: var(--bg-editor, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  max-height: 190px;
+  overflow-y: auto;
+  color: var(--fg);
+  text-align: justify;
+  text-justify: inter-ideograph;
+}
+
+.set-preview p {
+  margin: 0 0 0.8em;
+  text-indent: 2em;
+}
+
+.set-preview p:last-child {
+  margin-bottom: 0;
+}
+
+.set-meta {
+  margin: 6px 0 0;
+  color: var(--fg-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c9a7ff"/>
+      <stop offset="0.52" stop-color="#8e78e8"/>
+      <stop offset="1" stop-color="#51429a"/>
+    </linearGradient>
+    <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4656a8"/>
+      <stop offset="1" stop-color="#20284f"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff0ed"/>
+      <stop offset="1" stop-color="#ffd8d7"/>
+    </linearGradient>
+    <linearGradient id="ribbon" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff9abb"/>
+      <stop offset="1" stop-color="#e94e87"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#211849" flood-opacity=".35"/>
+    </filter>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+  </defs>
+
+  <!-- 彩色圆角徽章 -->
+  <rect x="34" y="34" width="956" height="956" rx="235" fill="url(#bg)"/>
+  <circle cx="210" cy="196" r="90" fill="#fff" opacity=".12"/>
+  <circle cx="825" cy="790" r="150" fill="#fbd4ff" opacity=".10"/>
+
+  <!-- 二次元闪光 -->
+  <g fill="#fff7a8" opacity=".95">
+    <path d="M155 430l13 38 38 13-38 13-13 38-13-38-38-13 38-13z"/>
+    <path d="M824 200l10 29 29 10-29 10-10 29-10-29-29-10 29-10z"/>
+    <path d="M865 526l7 20 20 7-20 7-7 20-7-20-20-7 20-7z"/>
+  </g>
+  <g fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" opacity=".8">
+    <path d="M190 690l-35 35M155 690l35 35"/>
+    <path d="M824 360l-28 28M796 360l28 28"/>
+  </g>
+
+  <!-- 背后猫耳/发饰轮廓 -->
+  <path d="M267 385L218 160q-9-43 31-18l163 102z" fill="url(#hair)" stroke="#202449" stroke-width="16"/>
+  <path d="M757 385l49-225q9-43-31-18L612 244z" fill="url(#hair)" stroke="#202449" stroke-width="16"/>
+  <path d="M261 226l113 83-120 18zM763 226l-113 83 120 18z" fill="#ff9bbf" opacity=".78"/>
+
+  <!-- 肩膀与制服 -->
+  <path d="M275 786q-130 38-166 171h806q-36-133-166-171l-123-39H398z" fill="#fff6fc" stroke="#303268" stroke-width="18" filter="url(#shadow)"/>
+  <path d="M390 758l122 166 122-166-54-30H444z" fill="#ffd2e3" stroke="#45417c" stroke-width="13"/>
+  <path d="M420 831l92 93 92-93-21-12H441z" fill="#f35d9a"/>
+  <path d="M351 799q-89 37-127 158h130l56-109zM673 799q89 37 127 158H670l-56-109z" fill="#765fb8" opacity=".95"/>
+
+  <!-- 脸 -->
+  <path d="M300 412q0-211 212-211t212 211v161q0 170-212 223-212-53-212-223z" fill="url(#skin)" stroke="#303268" stroke-width="18" filter="url(#shadow)"/>
+
+  <!-- 头发 -->
+  <path d="M283 466q-32-267 229-287 226 15 231 245-57-104-142-119-67-12-140-68-50 105-178 138z" fill="url(#hair)" stroke="#202449" stroke-width="18"/>
+  <path d="M300 414q-31 86-11 226l69-80-1-94zM724 406q39 99 8 234l-66-80 1-101z" fill="url(#hair)"/>
+  <path d="M510 211q-40 110-141 151 104 27 154-49 62 65 152 72-106-71-121-161z" fill="#6676d1" opacity=".75"/>
+
+  <!-- 蝴蝶结 -->
+  <path d="M511 287q-74-91-160-24-25 20 2 42l132 49z" fill="url(#ribbon)" stroke="#a63870" stroke-width="13"/>
+  <path d="M513 287q74-91 160-24 25 20-2 42l-132 49z" fill="url(#ribbon)" stroke="#a63870" stroke-width="13"/>
+  <circle cx="512" cy="319" r="34" fill="#ffd36d" stroke="#a63870" stroke-width="12"/>
+
+  <!-- 大眼睛 -->
+  <path d="M348 520q63-86 133 0-8 116-73 116t-60-116z" fill="#fff" stroke="#303268" stroke-width="14"/>
+  <path d="M543 520q70-86 133 0-8 116-60 116t-73-116z" fill="#fff" stroke="#303268" stroke-width="14"/>
+  <ellipse cx="414" cy="566" rx="29" ry="52" fill="#8870e8"/>
+  <ellipse cx="610" cy="566" rx="29" ry="52" fill="#8870e8"/>
+  <ellipse cx="419" cy="555" rx="11" ry="20" fill="#fff"/>
+  <ellipse cx="615" cy="555" rx="11" ry="20" fill="#fff"/>
+  <path d="M348 510q61-73 133 0M543 510q70-73 133 0" fill="none" stroke="#202449" stroke-width="20" stroke-linecap="round"/>
+  <path d="M335 659q34 31 68 4M621 663q34 27 68-4" fill="none" stroke="#f08a9e" stroke-width="15" stroke-linecap="round" opacity=".7"/>
+
+  <!-- 小嘴 -->
+  <path d="M488 687q24 20 48 0" fill="none" stroke="#b45676" stroke-width="10" stroke-linecap="round"/>
+
+  <!-- 书与羽毛笔，表达写作主题 -->
+  <g transform="translate(705 665) rotate(-18)" filter="url(#shadow)">
+    <path d="M0 110q75-37 150 0v160q-75-37-150 0z" fill="#fff9ff" stroke="#383875" stroke-width="13"/>
+    <path d="M150 110q75-37 150 0v160q-75-37-150 0z" fill="#f3dcff" stroke="#383875" stroke-width="13"/>
+    <path d="M150 110v160" stroke="#383875" stroke-width="13"/>
+    <path d="M32 159h93M32 192h78M182 159h92M182 192h78" stroke="#b889d8" stroke-width="9" stroke-linecap="round"/>
+    <path d="M145 98Q151-22 246-104" fill="none" stroke="#f4bd58" stroke-width="17" stroke-linecap="round"/>
+    <path d="M230-107q-47-83 28-113 16 62 73 75-47 7-101 38z" fill="#ff9fc5" stroke="#a63870" stroke-width="10"/>
+    <path d="M230-107q-63-20-77-87 50 12 83-27 8 57-6 114z" fill="#ff77ad" stroke="#a63870" stroke-width="10"/>
+    <path d="M145 98l-19 52" stroke="#b87737" stroke-width="18" stroke-linecap="round"/>
+  </g>
+</svg>

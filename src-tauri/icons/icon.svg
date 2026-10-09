@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     viewBox="0 0 512 512" width="512" height="512">
+  <!-- MyNovel 应用图标：樱花 + 翻开的书
+       配色取自 Catppuccin Mocha (MIT)：pink #f5c2e7 / mauve #cba6f7 / lavender #b4befe
+                                  base #1e1e2e / surface #313244 / rosewater #f5e0dc -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#24243a"/>
+      <stop offset="60%" stop-color="#1e1e2e"/>
+      <stop offset="100%" stop-color="#181825"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f5e0dc"/>
+      <stop offset="100%" stop-color="#cdd6f4"/>
+    </linearGradient>
+    <linearGradient id="petalFill" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#cba6f7"/>
+      <stop offset="100%" stop-color="#f5c2e7"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f5c2e7" stop-opacity="0.42"/>
+      <stop offset="100%" stop-color="#f5c2e7" stop-opacity="0"/>
+    </radialGradient>
+    <!-- 一枚花瓣：底部在 (0,0)，向上舒展，尖端带樱花特有的小缺口 -->
+    <path id="petal"
+          d="M0,0 C17,-15 30,-38 24,-57 C20,-70 7,-74 0,-61 C-7,-74 -20,-70 -24,-57 C-30,-38 -17,-15 0,0 Z"/>
+  </defs>
+
+  <!-- 底板：圆角方形 + 柔和渐变 -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- 花心柔光 -->
+  <circle cx="256" cy="196" r="168" fill="url(#glow)"/>
+
+  <!-- 樱花：外层五瓣 -->
+  <g transform="translate(256,196) scale(1.42)" fill="url(#petalFill)">
+    <use xlink:href="#petal" transform="rotate(0)"/>
+    <use xlink:href="#petal" transform="rotate(72)"/>
+    <use xlink:href="#petal" transform="rotate(144)"/>
+    <use xlink:href="#petal" transform="rotate(216)"/>
+    <use xlink:href="#petal" transform="rotate(288)"/>
+  </g>
+  <!-- 樱花：内层五瓣（错开 36°，做成重瓣） -->
+  <g transform="translate(256,196) scale(0.78) rotate(36)" fill="#b4befe" opacity="0.92">
+    <use xlink:href="#petal" transform="rotate(0)"/>
+    <use xlink:href="#petal" transform="rotate(72)"/>
+    <use xlink:href="#petal" transform="rotate(144)"/>
+    <use xlink:href="#petal" transform="rotate(216)"/>
+    <use xlink:href="#petal" transform="rotate(288)"/>
+  </g>
+  <!-- 花蕊 -->
+  <circle cx="256" cy="196" r="17" fill="#f9e2af"/>
+  <g fill="#fab387">
+    <circle cx="243" cy="188" r="4.6"/>
+    <circle cx="269" cy="188" r="4.6"/>
+    <circle cx="256" cy="212" r="4.6"/>
+  </g>
+
+  <!-- 飘落的花瓣 -->
+  <g fill="#f5c2e7" opacity="0.85">
+    <use xlink:href="#petal" transform="translate(86,150) scale(0.42) rotate(-28)"/>
+    <use xlink:href="#petal" transform="translate(430,214) scale(0.36) rotate(38)"/>
+    <use xlink:href="#petal" transform="translate(122,296) scale(0.28) rotate(12)"/>
+  </g>
+
+  <!-- 翻开的书 -->
+  <g transform="translate(256,362)">
+    <path d="M-8,-62 Q-84,-90 -158,-66 L-158,52 Q-84,28 -8,54 Z" fill="url(#page)"/>
+    <path d="M8,-62 Q84,-90 158,-66 L158,52 Q84,28 8,54 Z" fill="url(#page)"/>
+    <!-- 书脊 -->
+    <path d="M0,-63 L0,57" stroke="#1e1e2e" stroke-width="7" opacity="0.6" stroke-linecap="round"/>
+    <!-- 页脚描边（薰衣草） -->
+    <path d="M-158,52 Q-84,28 -8,54" fill="none" stroke="#b4befe" stroke-width="4" opacity="0.55" stroke-linecap="round"/>
+    <path d="M158,52 Q84,28 8,54" fill="none" stroke="#b4befe" stroke-width="4" opacity="0.55" stroke-linecap="round"/>
+    <!-- 书页上的横线（暗示文字） -->
+    <g stroke="#9aa0c0" stroke-width="5" opacity="0.5" stroke-linecap="round">
+      <path d="M-126,-8 L-40,-14"/>
+      <path d="M-126,14 L-40,8"/>
+      <path d="M40,-14 L126,-8"/>
+      <path d="M40,8 L126,14"/>
+    </g>
+  </g>
+</svg>

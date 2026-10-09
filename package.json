@@ -1,0 +1,47 @@
+{
+  "name": "mynovel",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "icons": "python3 scripts/build-icons.py",
+    "tauri": "tauri",
+    "app": "tauri dev",
+    "app:build": "tauri build",
+    "test": "npm run test:editor && npm run test:markdown && npm run test:complex && npm run test:export && npm run test:docx-epub && npm run test:volume && npm run test:format",
+    "test:editor": "node scripts/test-editor.mjs",
+    "test:markdown": "node scripts/test-markdown.mjs",
+    "test:complex": "node scripts/test-complex.mjs",
+    "test:export": "node scripts/test-export.mjs",
+    "test:docx-epub": "node scripts/test-docx-epub.mjs",
+    "test:volume": "node scripts/test-volume.mjs",
+    "test:format": "node scripts/test-format.mjs"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.7.1",
+    "@codemirror/lang-markdown": "^6.3.1",
+    "@codemirror/language": "^6.10.8",
+    "@codemirror/search": "^6.5.8",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.35.3",
+    "@lezer/highlight": "^1.2.1",
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-dialog": "^2.2.0",
+    "@tauri-apps/plugin-opener": "^2.2.5",
+    "docx": "^9.8.1",
+    "fflate": "^0.8.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
+  }
+}
