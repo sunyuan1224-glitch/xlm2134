@@ -10,7 +10,7 @@ MyNovel 是一款**本地优先**的轻量小说写作桌面应用。正文就�
 
 ```bash
 cd <项目目录>
-./src-tauri/target/release/bundle/appimage/MyNovel_0.1.0_amd64.AppImage
+./src-tauri/target/release/bundle/appimage/MyNovel_<版本>_amd64.AppImage
 ```
 
 从别处复制过来后若提示权限不足，先 `chmod +x` 那个文件。仓库里还没有构建产物的话，按下面「开发与重新打包」跑一次 `npm run app:build`。
@@ -208,6 +208,16 @@ npm run icons      # 重新生成应用图标（需要 Python 3 + Pillow）
 打包产物在 `src-tauri/target/release/bundle/`：`appimage/` 供本机 Arch Linux 使用，`deb/` 和 `rpm/` 用于相应发行版。这些不是 Arch 的 pacman / AUR 包。
 
 Rust 版本要求见 `src-tauri/Cargo.toml` 的 `rust-version`。
+
+### 发版
+
+```bash
+scripts/release.sh 0.1.1 [release 说明文件]
+```
+
+一次做完：同步四处版本号（`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`AboutDialog` 里的 `VERSION`）→ 跑测试 → 离线打包 → 覆盖安装到 `~/AppImages/mynovel.appimage`（备份只留最近一个，旧的送回收站）→ 提交并打 tag → 推送 → 用 `gh` 建 GitHub release，**只挂 AppImage**。
+
+前置：工作区干净、`gh` 已 `auth login`。GitHub 直连不通，脚本默认走 `127.0.0.1:7897` 代理。
 
 ## 测试
 
