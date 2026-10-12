@@ -1240,8 +1240,83 @@ async function run() {
     ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
   await wait(200);
 
+  /* ================= Phase E：同名纲要不会吞掉卷行 / 章行 ================= */
+
+  // 用户报的场景：书 test / 卷 test / 章 test.md —— 卷纲（outline/<卷目录名>.md）和
+  // 章节纲要（outline/<章文件名>.md）都是 test/outline/test.md，同一个文件。
+  // 以前建树时「按纲要路径去重」，后走到的那一行会被整行丢掉：大纲页里既看不见这个章，
+  // 也就没有虚线「＋」可点（用户看到的「创建新章节后没有创建章节纲要的提示」）。
+  memFiles.clear();
+  memDirs.clear();
+  sidecars.clear();
+  memDirs.add("test");
+  memDirs.add("test/test");
+  memFiles.set("test/test/test.md", "");
+  assert(await useStore.getState().setRoot("/vol-fixture-same-name"), "换到同名工作区成功");
+  await wait(400);
+  // 卷注册表（真实工作区里就是 .novel/volumes.json 里那条 "test/test"）
+  await useStore.getState().setVolumes(["test/test"]);
+  await wait(400);
+
+  rowByText(".sidebar-tab", "大纲").click();
+  await wait(400);
+
+  /** 大纲页里每行的「名字 + 行尾标签」（标签「＋」= 这份纲要还没建） */
+  const outlineTags = () =>
+    rows(".outline-item").map((r) => {
+      const name = r.querySelector(".outline-item-name")!.textContent;
+      const tag = r.querySelector(".outline-item-tag")!.textContent;
+      return `${name}${tag}`;
+    });
+
+  assert(
+    outlineTags().join(",") === "test总纲,test＋,test＋",
+    `书 / 卷 / 章三行都要在（卷纲和章节纲要同名时也不例外），实际：${outlineTags().join(",")}`,
+  );
+  assert(
+    rows(".outline-item.kind-chapter").length === 1 &&
+      rows(".outline-item.kind-chapter")[0].classList.contains("missing"),
+    `同名也要有章的虚线「＋」行：${rows(".outline-item").map((r) => r.textContent?.trim()).join(" | ")}`,
+  );
+  assert(
+    rows(".outline-item")[2].textContent!.includes("＋"),
+    "章行排在自己的卷行下面，点一下就能建章节纲要",
+  );
+
+  // 卷纲先建出来（点卷行那一份），章行不能被挤掉，只是标签从「＋」换成「章节纲要」
+  memFiles.set("test/outline/test.md", "# test\n\n");
+  await useStore.getState().refresh();
+  await wait(400);
+  assert(
+    outlineTags().join(",") === "test总纲,test卷纲,test章节纲要",
+    `卷纲建好后卷、章两行都指向这份同名纲要，实际：${outlineTags().join(",")}`,
+  );
+
+  // 另一本同名情况：两个卷里各有一个「第一章.md」，两个卷的章都该有自己的行
+  memFiles.clear();
+  memDirs.clear();
+  memDirs.add("书");
+  memDirs.add("书/第一卷");
+  memDirs.add("书/第二卷");
+  memFiles.set("书/第一卷/第一章.md", "");
+  memFiles.set("书/第二卷/第一章.md", "");
+  assert(await useStore.getState().setRoot("/vol-fixture-dup-stem"), "换到重名章工作区成功");
+  await wait(400);
+  await useStore.getState().setVolumes(["书/第一卷", "书/第二卷"]);
+  await wait(400);
+  rowByText(".sidebar-tab", "大纲").click();
+  await wait(400);
+  assert(
+    rows(".outline-item.kind-chapter").length === 2,
+    `两个卷里的同名章各自一行，实际：${rows(".outline-item").map((r) => r.textContent?.trim()).join(" | ")}`,
+  );
+  assert(
+    rows(".outline-item.kind-chapter").every((r) => r.classList.contains("missing")),
+    "两份都还没建，都该是虚线「＋」",
+  );
+
   send(
-    "PASS: 文件树卷行/卷细线/纲要导航树（Phase A）+ 右键菜单区分/快速创建+行内改名/新建书·卷·章节纲要/卷纲随卷改名/总纲自动创建/卷注册表/指针事件拖动排序与移动/纲要跟书走·正文区编辑·双击改名/添加章节默认名顺延（Phase B）+ 反转卷与章显示·再按还原·导出顺序不受影响/删章连带删纲要（Phase C）+ 松散章夹进两卷之间·侧车混合顺序·反转后仍夹在同两卷之间·卷改名与删除同步·新建卷插回卷堆（Phase D）",
+    "PASS: 文件树卷行/卷细线/纲要导航树（Phase A）+ 右键菜单区分/快速创建+行内改名/新建书·卷·章节纲要/卷纲随卷改名/总纲自动创建/卷注册表/指针事件拖动排序与移动/纲要跟书走·正文区编辑·双击改名/添加章节默认名顺延（Phase B）+ 反转卷与章显示·再按还原·导出顺序不受影响/删章连带删纲要（Phase C）+ 松散章夹进两卷之间·侧车混合顺序·反转后仍夹在同两卷之间·卷改名与删除同步·新建卷插回卷堆（Phase D）+ 卷章同名纲要不吞行·重名章各自成行（Phase E）",
   );
 }
 

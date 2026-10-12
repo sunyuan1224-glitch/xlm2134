@@ -7,6 +7,9 @@
  *   - 卷行   = 该卷的卷纲     book/outline/<卷目录名>.md
  *   - 章行   = 该章的章节纲要 book/outline/<章文件名>.md（还没有时显示成虚线「＋」）
  *
+ * 纲要按「名字」找，所以同名就会指向同一份文件（卷目录名 = 章文件名，或两个卷里各有
+ * 一章同名）。这时卷、章各自照常占自己那一行，点哪一行都是打开那份纲要。
+ *
  * 这个页面只负责「找」，不负责「编」：点任意一行就在**正文编辑器**里打开它
  * （和章节一样是一个标签页），编辑、保存、另存都用正文那一套。
  *
@@ -85,6 +88,11 @@ export function OutlinePanel() {
      * hidden  = 这一层在某个被折叠的卷里：只把纲要路径记进 used，不往列表里推行。
      *           折叠必须走完（而不是跳过）子树，否则卷里的章节纲要不会进 used，
      *           就会掉进下面「对不上号的纲要」兜底组，看起来像「折了卷，章纲没收起来」。
+     *
+     * used 只用来「占号」，挡住兜底组重复列同一份纲要，**不**决定某行推不推：
+     * 卷与章是两回事，哪怕纲要路径撞在一起（卷目录名和章文件名同名的「test/test.md」、
+     * 或两个卷里各有「第一章.md」），两行也都要在列表里露面 —— 否则后一个实体的行会
+     * 整行消失，大纲页上再也看不见它、也就没有「＋」可点。
      */
     const walk = (
       nodes: FileNode[],
@@ -99,19 +107,17 @@ export function OutlinePanel() {
           if (isOutlineFile(n.path)) continue;
           if (isVolumeDir(n.name, n.path, volumeSet)) {
             const outline = `${outlineDir}/${n.name}.md`;
-            if (!used.has(outline)) {
-              used.add(outline);
-              if (!hidden) {
-                out.push({
-                  id: `vol:${n.path}`,
-                  path: outline,
-                  kind: "volume",
-                  name: n.name,
-                  depth,
-                  exists: fileSet.has(outline),
-                  foldKey: n.path,
-                });
-              }
+            used.add(outline);
+            if (!hidden) {
+              out.push({
+                id: `vol:${n.path}`,
+                path: outline,
+                kind: "volume",
+                name: n.name,
+                depth,
+                exists: fileSet.has(outline),
+                foldKey: n.path,
+              });
             }
             walk(n.children ?? [], depth + 1, outlineDir, used, flipped, hidden || collapsed.has(n.path));
           } else {
@@ -120,7 +126,6 @@ export function OutlinePanel() {
           }
         } else if (isChapterFile(n.path)) {
           const outline = `${outlineDir}/${stem(n.path)}.md`;
-          if (used.has(outline)) continue;
           used.add(outline);
           if (hidden) continue;
           out.push({
