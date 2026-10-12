@@ -82,6 +82,9 @@ export function OutlinePanel() {
     /**
      * 走一本「书」的子树：卷行 + 章行，非卷子目录继续往下找。
      * flipped = 这本书被「反转显示」了，逐层倒着列，和文件树里的顺序保持一致。
+     * hidden  = 这一层在某个被折叠的卷里：只把纲要路径记进 used，不往列表里推行。
+     *           折叠必须走完（而不是跳过）子树，否则卷里的章节纲要不会进 used，
+     *           就会掉进下面「对不上号的纲要」兜底组，看起来像「折了卷，章纲没收起来」。
      */
     const walk = (
       nodes: FileNode[],
@@ -89,6 +92,7 @@ export function OutlinePanel() {
       outlineDir: string,
       used: Set<string>,
       flipped: boolean,
+      hidden: boolean,
     ) => {
       for (const n of flipped ? [...nodes].reverse() : nodes) {
         if (n.is_dir) {
@@ -97,27 +101,28 @@ export function OutlinePanel() {
             const outline = `${outlineDir}/${n.name}.md`;
             if (!used.has(outline)) {
               used.add(outline);
-              out.push({
-                id: `vol:${n.path}`,
-                path: outline,
-                kind: "volume",
-                name: n.name,
-                depth,
-                exists: fileSet.has(outline),
-                foldKey: n.path,
-              });
+              if (!hidden) {
+                out.push({
+                  id: `vol:${n.path}`,
+                  path: outline,
+                  kind: "volume",
+                  name: n.name,
+                  depth,
+                  exists: fileSet.has(outline),
+                  foldKey: n.path,
+                });
+              }
             }
-            if (!collapsed.has(n.path)) {
-              walk(n.children ?? [], depth + 1, outlineDir, used, flipped);
-            }
+            walk(n.children ?? [], depth + 1, outlineDir, used, flipped, hidden || collapsed.has(n.path));
           } else {
             // 书目录下非卷的子目录：继续往下
-            walk(n.children ?? [], depth, outlineDir, used, flipped);
+            walk(n.children ?? [], depth, outlineDir, used, flipped, hidden);
           }
         } else if (isChapterFile(n.path)) {
           const outline = `${outlineDir}/${stem(n.path)}.md`;
           if (used.has(outline)) continue;
           used.add(outline);
+          if (hidden) continue;
           out.push({
             id: `ch:${n.path}`,
             path: outline,
@@ -152,7 +157,7 @@ export function OutlinePanel() {
       });
       if (collapsed.has(book)) continue;
 
-      walk(top.children ?? [], 1, outlineDir, used, flippedSet.has(book));
+      walk(top.children ?? [], 1, outlineDir, used, flippedSet.has(book), false);
 
       // 兜底：outline/ 里没和任何卷、章对上号的纲要也别丢
       const rest = files
