@@ -1363,8 +1363,40 @@ async function run() {
       );
     }
 
+    /* Phase G：顺序侧车要按书写进 <书>/.novel/，同时在根留一份全量镜像 */
+    {
+      const calls: { work: string; name: string }[] = [];
+      const spy = api as unknown as Record<string, unknown>;
+      const orig = spy.writeSidecar as (root: string, work: string, name: string, data: string) => Promise<void>;
+      spy.writeSidecar = async (root: string, work: string, name: string, data: string) => {
+        if (name === "volumes" || name === "chapter-order" || name === "order-flip") calls.push({ work, name });
+        return orig(root, work, name, data);
+      };
+      await useStore.getState().setVolumes([...useStore.getState().volumes]);
+      await wait(200);
+      // 章顺序走的是另一个动作；用当前顺序再存一次，触发它的写盘
+      await useStore.getState().applyChapterOrder({ ...useStore.getState().chapterOrder });
+      await wait(300);
+      spy.writeSidecar = orig;
+
+      const works = [...new Set(calls.map((c) => c.work))];
+      assert(
+        works.includes("书"),
+        `卷/章顺序应写进 <书>/.novel/（书目录自包含），实际写过的 work：${works.map((w) => JSON.stringify(w)).join(", ")}`,
+      );
+      assert(
+        works.includes(""),
+        `同时要保留工作区根那份全量镜像（老版本与历史数据兼容），实际：${works.map((w) => JSON.stringify(w)).join(", ")}`,
+      );
+      const names = [...new Set(calls.map((c) => c.name))].sort();
+      assert(
+        names.includes("volumes") && names.includes("chapter-order"),
+        `卷注册表与章顺序都要写，实际写了：${names.join(", ")}`,
+      );
+    }
+
     send(
-      "PASS: 文件树卷行/卷细线/纲要导航树（Phase A）+ 右键菜单区分/快速创建+行内改名/新建书·卷·章节纲要/卷纲随卷改名/总纲自动创建/卷注册表/指针事件拖动排序与移动/纲要跟书走·正文区编辑·双击改名/添加章节默认名顺延（Phase B）+ 反转卷与章显示·再按还原·导出顺序不受影响/删章连带删纲要（Phase C）+ 松散章夹进两卷之间·侧车混合顺序·反转后仍夹在同两卷之间·卷改名与删除同步·新建卷插回卷堆（Phase D）+ 卷章同名纲要不吞行·重名章各自成行（Phase E）+ 章节纲要右键「清除大纲」·删后回到虚线＋·卷纲与总纲右键不动（Phase F）",
+      "PASS: 文件树卷行/卷细线/纲要导航树（Phase A）+ 右键菜单区分/快速创建+行内改名/新建书·卷·章节纲要/卷纲随卷改名/总纲自动创建/卷注册表/指针事件拖动排序与移动/纲要跟书走·正文区编辑·双击改名/添加章节默认名顺延（Phase B）+ 反转卷与章显示·再按还原·导出顺序不受影响/删章连带删纲要（Phase C）+ 松散章夹进两卷之间·侧车混合顺序·反转后仍夹在同两卷之间·卷改名与删除同步·新建卷插回卷堆（Phase D）+ 卷章同名纲要不吞行·重名章各自成行（Phase E）+ 章节纲要右键「清除大纲」·删后回到虚线＋·卷纲与总纲右键不动（Phase F）+ 顺序侧车按书存进 <书>/.novel/ 且根保留全量镜像（Phase G）",
   );
 }
 

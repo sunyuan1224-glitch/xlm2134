@@ -356,9 +356,11 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     // 3. 载入侧车（卷注册表 / 章手动顺序）→ 自动补总纲 → 有新增就再扫一次
-    const volumes = await loadVolumeRegistry(root);
-    const chapterOrder = await loadChapterOrder(root);
-    const flippedBooks = await loadFlipRegistry(root);
+    // 显式传刚扫到的 ws.files：此刻 store 里的 files 还是上一个工作区的，
+    // 而这三个侧车要按"书"去找（每本书自己 .novel/ 下各一份）。
+    const volumes = await loadVolumeRegistry(root, ws.files);
+    const chapterOrder = await loadChapterOrder(root, ws.files);
+    const flippedBooks = await loadFlipRegistry(root, ws.files);
     let { files, tree } = ws;
     const created = await ensureBookOutlines(root, files, volumes);
     if (created.length) {
