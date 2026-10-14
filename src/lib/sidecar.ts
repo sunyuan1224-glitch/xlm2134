@@ -5,11 +5,16 @@ import type { Foreshadow, LoreEntry, TimelineEvent } from "./types";
 /** 侧车文件读写：作品目录下的 .novel/<name>.json */
 
 /**
- * 当前作品目录（侧车落在 `<root>/<work>/.novel/` 下）。
+ * 当前作品（书）目录 —— 侧车落在 `<root>/<work>/.novel/` 下。
  *
- * - 章放在作品子目录里 → 返回最上层的那一段（`"第一卷"`）；
- * - 章直接放在工作区根   → 返回 `""`，侧车落在工作区根的 `.novel/`；
- * - 没有工作区或一个文件都没有 → 返回 `null`（调用方直接当没有资料处理）。
+ * 规则：**取当前章路径的第一段，但只有在它确实是一本书（该目录下有 outline/）时才算**。
+ *   - 「工作区/我见/第一卷/001.md」→ "我见"（书）
+ *   - 「工作区/我见/序章.md」      → "我见"（书）
+ *   - 「书被单独打开，卷在根下」   → ""（"第一卷" 不是书，是卷 → 侧车落工作区根，也就是书根）
+ *
+ * 最后那条是这次改的关键：把书目录单独搬到另一台电脑打开时，卷目录的路径就在根下，
+ * 若还按"第一段"算，侧车会被塞进卷目录里、与搬来的那份对不上。现在按"是不是书"判断，
+ * 侧车始终落在书根，搬走的书能原地续写。
  *
  * 以前这里无条件取 `split("/")[0]`，根级章会得到 `"第一章.md"` 这种「作品名」，
  * 拼出 `<root>/第一章.md/.novel/plot.json`——父目录是个文件，写盘必然失败，
@@ -21,7 +26,15 @@ export function currentWork(): string | null {
   const p = st.activePath ?? st.files[0];
   if (!p) return null;
   const parts = p.split("/");
-  return parts.length > 1 ? parts[0] : "";
+  if (parts.length <= 1) return "";
+  const book = parts[0];
+  // 这个目录下有 outline/ 就算"书"（总纲 / 卷纲 / 章纲都住在那儿）；
+  // 另外：整个工作区只有一个顶层目录时也当它是一本书 —— 新书还没建纲要的那一刻
+  // 也算数，免得侧车跑到工作区根去。
+  const hasOutline = st.files.some((f) => f.startsWith(book + "/outline/"));
+  const tops = new Set(st.files.map((f) => f.split("/")[0]));
+  const isBook = hasOutline || tops.size === 1;
+  return isBook ? book : "";
 }
 
 async function load<T>(name: string, fallback: T, work: string | null): Promise<T> {
