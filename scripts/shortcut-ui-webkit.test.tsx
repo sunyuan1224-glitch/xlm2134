@@ -24,6 +24,7 @@ import { EditorView } from "@codemirror/view";
 import { Transaction } from "@codemirror/state";
 import App from "../src/App";
 import { useStore } from "../src/store";
+import { currentWork } from "../src/lib/sidecar";
 import { api, type FileNode } from "../src/api";
 import { SHORTCUTS } from "../src/components/HelpDialog";
 import capabilities from "../src-tauri/capabilities/default.json";
@@ -395,6 +396,21 @@ async function run() {
       !document.querySelector(".ft-btn, .float-toolbar"),
       "浮动工具栏应该已经移除，选中文本时不该再出现",
     );
+  });
+
+  await ck("侧车（伏笔 / 时间线 / 设定）跟着书文件夹走，不落在工作区根", () => {
+    // 书下的章 → work 取第一段（书），侧车落在 <书>/.novel/
+    useStore.setState({ root: ROOT, activePath: "我见/序章.md", files: ["我见/序章.md"] });
+    assert(
+      currentWork() === "我见",
+      `书下的章应把侧车放进书目录，实际 work=${JSON.stringify(currentWork())}`,
+    );
+    // 章直接放在工作区根 → 侧车落在根的 .novel/（这是设计上的兜底）
+    useStore.setState({ activePath: "序章.md", files: ["序章.md"] });
+    assert(currentWork() === "", `根级章应落在工作区根，实际 work=${JSON.stringify(currentWork())}`);
+    // 还原 fixture
+    useStore.setState({ activePath: C1, files: [C1] });
+    assert(currentWork() === BOOK, `还原后应回到 fixture 的书，实际 ${JSON.stringify(currentWork())}`);
   });
 
   await ck("全书字数跟着当前章的改动即时更新", async () => {
