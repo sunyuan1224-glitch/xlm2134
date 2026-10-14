@@ -200,6 +200,153 @@ function select(needle: string): void {
   v.dispatch({ selection: { anchor: at, head: at + needle.length } });
 }
 
+/** 文档第 n 行对应的 .cm-line（整块渲染的段落没有这个元素，返回 null） */
+function lineElementOf(v: EditorView, n: number): HTMLElement | null {
+  for (const el of v.contentDOM.querySelectorAll<HTMLElement>(".cm-line")) {
+    if (!el.getClientRects().length) continue;
+    if (v.state.doc.lineAt(v.posAtDOM(el, 0)).number === n) return el;
+  }
+  return null;
+}
+
+/**
+ * 屏幕上这个点落在文档的哪一行。
+ *
+ * 交给浏览器的命中测试（elementFromPoint）+ CM 的 DOM→文档映射，不问 CM 的高度表：
+ * 高度表出错时，用它的 posAtCoords 当真相就是被测对象自己给自己打分。
+ * 点在整块渲染的块上时命中的是那个 widget，posAtDOM 会给出块的起始位置。
+ */
+function lineUnderPoint(v: EditorView, x: number, y: number): number | null {
+  const hit = document.elementFromPoint(x, y) as HTMLElement | null;
+  if (!hit || !v.contentDOM.contains(hit)) return null;
+  // 正文下方那片空白（.cm-content 撑满滚动区）不属于任何一行，跳过
+  const anchor = hit.closest(".cm-line, .cm-lp-rendered") as HTMLElement | null;
+  if (!anchor) return null;
+  try {
+    return v.state.doc.lineAt(v.posAtDOM(anchor, 0)).number;
+  } catch {
+    return null;
+  }
+}
+
+/** 文档位置 pos 所属那一块的 DOM 元素：源码行框，或整块渲染的 widget */
+function blockElementOf(v: EditorView, pos: number): HTMLElement | null {
+  const line = lineElementOf(v, v.state.doc.lineAt(pos).number);
+  if (line) return line;
+  for (const el of v.contentDOM.querySelectorAll<HTMLElement>(".cm-lp-rendered")) {
+    try {
+      if (v.posAtDOM(el, 0) === pos) return el;
+    } catch {
+      /* 映射不到文档的块（例如还没量过的 widget）就当没有 */
+    }
+  }
+  return null;
+}
+
+/**
+ * 像用户那样点一下：事件目标是那个点上的元素、detail=1（真的单次点击）。
+ * 直接往 .cm-content 上发 detail=0 的事件会被 CodeMirror 当成三击（整行选中），
+ * 那是测试自己造出来的假象，不是应用的行为。
+ */
+function clickAt(v: EditorView, x: number, y: number): void {
+  // 每个事件都重新取一次目标：按下会让当前块在"渲染/源码"之间切换，
+  // 真实鼠标的 mouseup 命中的是那时的元素，不是按下时的那个（否则事件传不到 document，
+  // CodeMirror 的拖选会话就永远收不了尾）。
+  for (const type of ["mousedown", "mouseup", "click"]) {
+    const target = (document.elementFromPoint(x, y) as HTMLElement | null) ?? v.contentDOM;
+    target.dispatchEvent(
+      new MouseEvent(type, {
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: type === "mousedown" ? 1 : 0,
+        detail: 1,
+      }),
+    );
+  }
+}
+
+/** 从 (x, y1) 按住拖到 (x, y2)：和用户的鼠标一样，事件目标是沿途的元素 */
+function dragAt(v: EditorView, x: number, y1: number, y2: number): void {
+  const at = (y: number) => (document.elementFromPoint(x, y) as HTMLElement | null) ?? v.contentDOM;
+  const send = (type: string, y: number, down: boolean) =>
+    at(y).dispatchEvent(
+      new MouseEvent(type, {
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: down ? 1 : 0,
+        detail: 1,
+      }),
+    );
+  send("mousedown", y1, true);
+  for (let i = 1; i <= 4; i++) send("mousemove", y1 + ((y2 - y1) * i) / 4, true);
+  send("mouseup", y2, false);
+}
+
+/**
+ * 屏幕上第 n 行行框的垂直中心。
+ *
+ * 贴着行框边缘点会踩到半像素的边界（真实排版取整与高度表小数差 0.5px），
+ * 那是排版的抖动不是落点 bug，所以统一点每行的正中间。
+ */
+function rowCenterOf(v: EditorView, x: number, n: number): number | null {
+  const contentRect = v.contentDOM.getBoundingClientRect();
+  const bottom = Math.min(contentRect.bottom, window.innerHeight) - 1;
+  let sum = 0;
+  let count = 0;
+  for (let y = Math.ceil(contentRect.top); y < bottom; y++) {
+    if (lineUnderPoint(v, x, y) === n) {
+      sum += y;
+      count++;
+    }
+  }
+  return count ? sum / count : null;
+}
+
+/**
+ * 落点偏了时的对照表：把「真实行框」「CM 高度表」「点这里实际落到哪一行」并排打出来。
+ * 页面 console 有时不透出来，所以失败信息里必须自带这些数字。
+ */
+function landingReport(v: EditorView, x: number): string {
+  const rows: string[] = [];
+  const contentRect = v.contentDOM.getBoundingClientRect();
+  // viewState 是内部结构，没有公开类型；这里只用来把高度表的坐标换算到屏幕坐标
+  const internals = (v as unknown as {
+    viewState: { paddingTop: number; docHeight: number; heightOracle: { textHeight: number } };
+  }).viewState;
+  const docTop = contentRect.top + internals.paddingTop;
+  rows.push(
+    `contentDOM 顶=${contentRect.top.toFixed(1)} 高=${contentRect.height.toFixed(1)} ` +
+      `paddingTop=${internals.paddingTop} 文档高=${internals.docHeight.toFixed(1)} ` +
+      `CM行高=${v.defaultLineHeight.toFixed(2)} CM字形高=${internals.heightOracle.textHeight.toFixed(2)}`,
+  );
+  for (let n = 1; n <= Math.min(8, v.state.doc.lines); n++) {
+    const line = v.state.doc.line(n);
+    const block = v.lineBlockAt(line.from);
+    const dom = lineElementOf(v, n);
+    if (!dom) {
+      rows.push(
+        `L${n} ${JSON.stringify(line.text.slice(0, 8))} 高度表顶=${(docTop + block.top).toFixed(1)} 高${block.height.toFixed(1)} | 整块渲染：没有 .cm-line 行框`,
+      );
+      continue;
+    }
+    const r = dom.getBoundingClientRect();
+    const mid = r.top + r.height / 2;
+    const hit = v.posAtCoords({ x, y: mid });
+    rows.push(
+      `L${n} ${JSON.stringify(line.text.slice(0, 8))} 行框顶=${r.top.toFixed(1)} 高${r.height.toFixed(1)} | ` +
+        `高度表顶=${(docTop + block.top).toFixed(1)} 高${block.height.toFixed(1)} | ` +
+        `点行框中点 → ${hit === null ? "null" : "L" + v.state.doc.lineAt(hit).number}`,
+    );
+  }
+  return rows.join("\n");
+}
+
 /** 断言文档里出现了某个标记，并且把整篇原文回显出来方便定位 */
 function expectDoc(needle: string, hint: string): void {
   const text = docText();
@@ -398,46 +545,105 @@ async function run() {
     );
   });
 
+  /**
+   * 点在某一行行框上，光标必须落在那一行。
+   *
+   * 地面真相交给浏览器自己的命中测试（elementFromPoint）：它按真实排版算，
+   * 与 CodeMirror 的高度表无关。拿 posAtCoords / coordsAtPos 这类 CM 自报数据
+   * 当真相，等于被测对象自己给自己打分。
+   */
   await ck("鼠标点击命中的是所点那一行（逐行实测）", async () => {
-    const doc = ["# 标题行", "", "第一段正文，用来测试点击命中情况。", "", "- 列表项一", "- 列表项二", "", "结尾一段。"].join("\n");
+    // 长段落会自动折行、非当前块会被整块渲染成 widget —— 落点偏移的两个来源都在这里
+    const para = "这是一段会自动折行的长正文，用来验证点击落点是否准确。".repeat(3);
+    const doc = ["# 标题行", "", para, "", "第二段短行。", "", "结尾一段。"].join("\n");
     resetDoc(doc, 0);
     await wait(400);
     const v = view();
-    // 诊断：强制 CM 重新测量高度表，看是不是"测量过期"导致的落点偏移
     v.requestMeasure();
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const lines: string[] = [];
-    let bad = 0;
-    for (let n = 1; n <= Math.min(3, v.state.doc.lines); n++) {
-      const line = v.state.doc.line(n);
-      // 地面真相：直接拿那一行的 DOM 行框（视口坐标），而不是 CM 自报的 coordsAtPos
-      const dom = v.domAtPos(line.from).node;
-      const el = (dom.nodeType === 3 ? dom.parentElement : (dom as HTMLElement)) as HTMLElement | null;
-      const lineEl = (el?.closest?.(".cm-line") as HTMLElement | null) ?? el;
-      if (!lineEl) { lines.push(`L${n}: 找不到行元素`); continue; }
-      const r = lineEl.getBoundingClientRect();
-      const x = r.left + Math.min(6, r.width / 2);
-      const y = r.top + r.height / 2;
-      const handler = v.contentDOM;
-      handler.dispatchEvent(new MouseEvent("mousedown", { clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0 }));
-      handler.dispatchEvent(new MouseEvent("mouseup", { clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0 }));
-      const caret = v.state.doc.lineAt(v.state.selection.main.head).number;
-      const ok = caret === n;
-      if (!ok) bad++;
-      lines.push(`L${n} 行框高 ${r.height.toFixed(1)} / CM自认行高 ${v.defaultLineHeight.toFixed(1)} → 点框中心落点 L${caret}（应为 L${n}）`);
+
+    const contentRect = v.contentDOM.getBoundingClientRect();
+    // 点击的横坐标落进行框里：.cm-content 有 16px 内边距，行框从它右边开始
+    const x = lineElementOf(v, 1)!.getBoundingClientRect().left + 4;
+    const bottom = Math.min(contentRect.bottom, window.innerHeight) - 2;
+    /*
+     * 先对齐高度表与真实排版。
+     *
+     * 点击落点＝「按高度表把 y 换算成文档位置」，所以高度表必须和真实排版的每个块顶
+     * 对得上；对不上（例如整块渲染的 widget 漏算了子元素外边距）就会越往下越偏，
+     * 最后整行掉一格。这一条比点击更灵敏：差几个像素就能提前报出来是哪里漏量了。
+     */
+    const skewed: string[] = [];
+    let prev: { n: number; top: number; realTop: number } | null = null;
+    for (let n = 1; n <= v.state.doc.lines; n++) {
+      const from = v.state.doc.line(n).from;
+      const el = blockElementOf(v, from);
+      if (!el) continue;
+      const real = el.getBoundingClientRect();
+      const gap = prev ? v.lineBlockAt(from).top - prev.top : Number.NaN;
+      const realGap = prev ? real.top - prev.realTop : Number.NaN;
+      if (prev && (Math.abs(gap - realGap) > 1 || Math.abs(v.lineBlockAt(from).height - real.height) > 1)) {
+        skewed.push(
+          `L${prev.n}→L${n} 高度表间距 ${gap.toFixed(1)} ≠ 真实 ${realGap.toFixed(1)}` +
+            `（L${n} 高 ${v.lineBlockAt(from).height.toFixed(1)} vs ${real.height.toFixed(1)}）`,
+        );
+      }
+      prev = { n, top: v.lineBlockAt(from).top, realTop: real.top };
     }
-    console.log("    " + lines.join("\n    "));
-    if (bad) console.log("    [已知问题] 鼠标点击落点偏一行：\n    " + lines.join("\n    "));
-    // 场景 B：正文下方空白区（最容易"点空了跳文末"）
-    const last = v.state.doc.line(v.state.doc.lines);
-    const lc = v.coordsAtPos(last.from)!;
-    const yb = lc.bottom + 40 - window.scrollY;
-    v.contentDOM.dispatchEvent(new MouseEvent("mousedown", { clientX: lc.left + 2 - window.scrollX, clientY: yb, bubbles: true, cancelable: true, button: 0 }));
-    v.contentDOM.dispatchEvent(new MouseEvent("mouseup", { clientX: lc.left + 2 - window.scrollX, clientY: yb, bubbles: true, cancelable: true, button: 0 }));
-    const blankLine = v.state.doc.lineAt(v.state.selection.main.head).number;
-    lines.push(`正文下方空白区点击 → 落点 L${blankLine}（共 ${v.state.doc.lines} 行）`);
-    // 场景 C：正文上方空白（标题上方）
-    console.log("    " + lines.join("\n    "));
+    assert(
+      !skewed.length,
+      `CodeMirror 的高度表与真实排版对不上（点这一行就会落到相邻行）：${skewed.join("；")}\n${landingReport(v, x)}`,
+    );
+    const miss: string[] = [];
+    let clicks = 0;
+    // 逐行实测：先在屏幕上扫出每一行的行框，再点它的正中
+    for (let n = 1; n <= v.state.doc.lines; n++) {
+      const y = rowCenterOf(v, x, n);
+      if (y === null || y > bottom) continue;
+      // 前一次点击会让当前块在"渲染/源码"之间切换、版面挪几像素，所以点之前再确认一次
+      if (lineUnderPoint(v, x, y) !== n) continue;
+      clickAt(v, x, y);
+      clicks++;
+      const got = v.state.doc.lineAt(v.state.selection.main.head).number;
+      if (got !== n) miss.push(`y=${Math.round(y)} 点在 L${n} 上 → 落点 L${got}`);
+    }
+    // 扫到的行太少要报错：漏扫会让这条用例变成"什么都没测"的假绿
+    assert(clicks >= 6, `只扫到 ${clicks} 行，太少（x=${x.toFixed(1)}）`);
+    console.log(`    逐行点击 ${clicks} 次，落错行 ${miss.length} 次${miss.length ? "：" + miss.slice(0, 14).join("；") : ""}`);
+    // 失败时把 CM 的高度表与真实排版一起抛出来：这条断言要么绿，要么自带证据
+    assert(!miss.length, `鼠标点击落点偏了：${miss.length}/${clicks} 次落错行（${miss.slice(0, 14).join("；")}）\n${landingReport(v, x)}`);
+    resetDoc(DOC, 0);
+  });
+
+  /**
+   * 拖拽：按下的那一刻就是锚点，锚点错了整段选区就跑到别处 ——
+   * 用户「想选中这一段，结果选中的是下一段」就是这么发现的。
+   */
+  await ck("拖拽选中的是按下那一段（不是下一段）", async () => {
+    const para = "这是一段会自动折行的长正文，用来验证拖拽选中的是哪一段。".repeat(3);
+    const doc = ["# 标题行", "", para, "", "第二段短行。", "", "结尾一段。"].join("\n");
+    resetDoc(doc, 0);
+    await wait(400);
+    const v = view();
+    v.requestMeasure();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const paraLine = v.state.doc.line(3);
+    const widget = document.querySelector<HTMLElement>(".cm-lp-rendered");
+    assert(widget, "非当前块应该被整块渲染成 .cm-lp-rendered，这时才谈得上拖拽落点");
+    const box = widget!.getBoundingClientRect();
+    const x = box.left + 6;
+    // 段落中心按下 → 拖到段落末尾松手：整段都该被选中
+    dragAt(v, x, box.top + box.height / 2, box.bottom - 2);
+    const sel = v.state.selection.main;
+    const picked = v.state.sliceDoc(sel.from, sel.to);
+    assert(
+      picked === paraLine.text,
+      `拖拽应选中第 3 段整段，实际选中 ${JSON.stringify(picked)}` +
+        `（L${v.state.doc.lineAt(sel.from).number}:${sel.from} → L${v.state.doc.lineAt(sel.to).number}:${sel.to}）\n` +
+        `按下点在 L${lineUnderPoint(v, x, box.top + box.height / 2)}（段落范围 [${paraLine.from}..${paraLine.to}]，` +
+        `渲染块 [${box.top.toFixed(1)}..${box.bottom.toFixed(1)}]，拖到 y=${(box.bottom - 2).toFixed(1)}）`,
+    );
     resetDoc(DOC, 0);
   });
 

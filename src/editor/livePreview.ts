@@ -123,10 +123,44 @@ function revealAnchor(view: EditorView, href: string): boolean {
   return true;
 }
 
-function wireWidgetEvents(el: HTMLElement, view: EditorView, from: number, _to: number, options: PreviewOptions) {
+function wireWidgetEvents(el: HTMLElement, view: EditorView, from: number, to: number, options: PreviewOptions) {
   el.addEventListener("mousedown", e => {
+    const target = e.target as HTMLElement;
     // summary 要走原生 click 才点得开，其它位置不让浏览器抢走光标/选中
-    if (!(e.target as HTMLElement).closest("button,summary")) e.preventDefault();
+    if (target.closest("button,summary")) return;
+    e.preventDefault();
+    /*
+     * 整块渲染的块，按下时自己定落点。
+     *
+     * CodeMirror 对这种块只知道两端：落在上半截算块首、下半截算块尾，而块尾把换行也算进去
+     * （＝下一行的行首）。于是按在长段落的中间往下拖，选区会从下一段开头长出来 ——
+     * 用户报的「想选中这一段，结果选中了下一段」就是这么来的。块里的位置 CM 本来就认不出
+     * （它只知道整个块），所以：按下先落到块首，按住拖动则把选区从块首拉到手指处。
+     * 块首此时已经切回源码可见，posAtCoords 对它是准的；一次普通点击由下面的 click 收起，
+     * 仍然是「光标落在本块开头，直接编辑」。
+     */
+    // 中键/右键、Ctrl+点击链接这些照旧走原生（右键菜单与链接跳转都挂在别处）
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.altKey) return;
+    view.dispatch({ selection: { anchor: from } });
+    view.focus();
+    // 按下之后本块立刻切回源码，widget 的 DOM 会被换掉：松手事件可能正好落在已被替换
+    // 掉的元素上而传不到 document，所以除了 mouseup 还要在 move 里靠 buttons 兜底收尾，
+    // 并用按下时的文档核对一下（换章/换文件后这个闭包里的 from 已经没有意义了）。
+    const pressedDoc = view.state.doc;
+    const ownerDoc = el.ownerDocument;
+    const stop = () => {
+      ownerDoc.removeEventListener("mousemove", move, true);
+      ownerDoc.removeEventListener("mouseup", stop, true);
+    };
+    const move = (ev: MouseEvent) => {
+      if (!ev.buttons || view.state.doc !== pressedDoc) return stop();
+      const pos = view.posAtCoords({ x: ev.clientX, y: ev.clientY });
+      // 拖到本块里就到本块末尾为止：块首切回源码后行框比渲染块矮，指尖停在原块底部时
+      // 那个 y 已经落到下一行了，不夹住的话"拖到这一段末尾"会多选中下一行行首。
+      if (pos !== null) view.dispatch({ selection: { anchor: from, head: Math.min(to, pos) } });
+    };
+    ownerDoc.addEventListener("mousemove", move, true);
+    ownerDoc.addEventListener("mouseup", stop, true);
   });
   el.addEventListener("click", e => {
     const target = e.target as HTMLElement;

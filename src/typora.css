@@ -428,7 +428,23 @@ kbd {
 }
 
 /* Rendered syntax blocks share proportions and warm light palette. */
-.cm-lp-rendered { padding: 0 .5rem; line-height: var(--editor-line-height, 1.65); overflow-wrap: anywhere; }
+/*
+ * display: flow-root 不是装饰，别删。
+ *
+ * 整块渲染的块是 CodeMirror 的 block widget：它算"点这里该落哪一行"用的高度表，
+ * 取的是这个元素的 border box（getBoundingClientRect）。默认的 display: block
+ * 会让首个/末个子元素的上下外边距**塌陷到盒子外面**（这里就是下面 p 的 .45rem），
+ * 于是"盒子高 102.6"而"实际占了 117"—— 每有一个整块渲染的块，高度表就比真实排版
+ * 矮 14.4px，越往下差得越多（第 2 个块下面差 28.8px），点击/拖拽的落点就整行往下
+ * 掉一格。flow-root 建 BFC，把子元素的外边距收进盒子里，视觉一个像素都不变，
+ * 但量到的高度和真实占位一致了。
+ */
+.cm-lp-rendered {
+  display: flow-root;
+  padding: 0 .5rem;
+  line-height: var(--editor-line-height, 1.65);
+  overflow-wrap: anywhere;
+}
 .cm-lp-rendered p { margin: .45rem 0; }
 .cm-lp-rendered pre {
   background: var(--bg-code);
