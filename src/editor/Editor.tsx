@@ -17,6 +17,7 @@ import { isInCode, livePreview } from "./livePreview";
 import { installImeGuard, planExternalSync, type ImeGuard } from "./ime";
 import { listKeys } from "./listKeys";
 import { arrowKeys } from "./arrowKeys";
+import { inlineMarks } from "./inlineMarks";
 import { baseTheme, highlightStyle, sourceHighlightStyle } from "./extensions";
 import { syntaxHighlighting } from "@codemirror/language";
 import { api } from "../api";
@@ -69,17 +70,23 @@ export function Editor({
 
   const modeExtensions = (source: boolean): Extension[] => [
     syntaxHighlighting(source ? sourceHighlightStyle : highlightStyle),
-    ...(source ? [] : [livePreview({
-      onLink: (href, mod) => cbs.current.onLinkClick?.(href, mod),
-      image: async src => {
-        const root = useStore.getState().root;
-        if (!root) return null;
-        let decoded: string;
-        try { decoded = decodeURIComponent(src); } catch { return null; }
-        const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-        return api.readImageDataUrl(root, resolveRelative(dir, decoded));
-      },
-    })]),
+    // 源码模式只看原文，所以即时预览与行内装饰都只挂在非源码模式
+    ...(source
+      ? []
+      : [
+          livePreview({
+            onLink: (href, mod) => cbs.current.onLinkClick?.(href, mod),
+            image: async src => {
+              const root = useStore.getState().root;
+              if (!root) return null;
+              let decoded: string;
+              try { decoded = decodeURIComponent(src); } catch { return null; }
+              const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+              return api.readImageDataUrl(root, resolveRelative(dir, decoded));
+            },
+          }),
+          inlineMarks,
+        ]),
   ];
 
   /**

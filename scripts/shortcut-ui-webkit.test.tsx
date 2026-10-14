@@ -397,6 +397,27 @@ async function run() {
     );
   });
 
+  await ck("正在编辑的那一行也能直接看出 ==高亮== / ^上标^ / ~下标~", async () => {
+    resetDoc("==重点== 与 ^上^ 与 ~下~ 与普通。\n", 0);
+    await wait(300);
+    const hl = document.querySelector<HTMLElement>(".cm-im-hl");
+    assert(hl, "当前行的高亮内容应带上 .cm-im-hl 装饰");
+    const bg = getComputedStyle(hl!).backgroundColor;
+    assert(bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent", `高亮内容应有底色，实际 ${bg}`);
+    assert(document.querySelector(".cm-im-sup"), "上标内容应带上 .cm-im-sup");
+    assert(document.querySelector(".cm-im-sub"), "下标内容应带上 .cm-im-sub");
+    // 三种语法各有一对标记，共 6 个标记字符被压暗
+    assert(
+      document.querySelectorAll(".cm-im-mark").length === 6,
+      `标记字符应被标出 6 处，实际 ${document.querySelectorAll(".cm-im-mark").length}`,
+    );
+    // 删除线是标准 Markdown，不该被当成本行内的那对 ~
+    resetDoc("~~删除线~~ 与 ==高==\n", 0);
+    await wait(300);
+    assert(!document.querySelector(".cm-im-sub"), "~~删除线~~ 不该被装饰成下标");
+    resetDoc(DOC, posOf("正文一。"));
+  });
+
   await ck("上下键跨过渲染过的块时，先进入那一段的源码（不整块跳）", () => {
     // 第 3 行是一条会长到软换行的段落的源码；它在即时预览里被渲染成块，默认行为会整块跳过去
     const longDoc = "短句一。\n\n" + "长".repeat(200) + "。\n\n短句二。\n";
