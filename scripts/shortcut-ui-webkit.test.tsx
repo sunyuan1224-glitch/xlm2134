@@ -362,6 +362,41 @@ async function run() {
 
   /* ---------------- 列表行为：对齐 Typora 的三处 ---------------- */
 
+  await ck("选中文本右键 → 菜单里能看到「高亮」（点击生效由 Ctrl+Shift+H 用例覆盖）", async () => {
+    resetDoc(DOC, posOf("正文一。"));
+    select("正文一。");
+    await wait(200); // 等 React 把选区同步到 store，菜单项才不会是 disabled
+    document
+      .querySelector(".cm-content")!
+      .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
+    await wait(300);
+    const ctx = document.querySelector<HTMLElement>(".ctx-menu");
+    assert(ctx, "右键应该弹出编辑器的 .ctx-menu");
+    const labels = [...ctx!.querySelectorAll<HTMLButtonElement>("button")].map((b) =>
+      (b.textContent ?? "").replace(/[\s✓]/g, ""),
+    );
+    for (const want of ["复制", "加粗", "斜体", "删除线", "高亮"]) {
+      assert(labels.some((t) => t.includes(want)), `右键菜单里应有「${want}」，实际：${labels.join(" | ")}`);
+    }
+
+    // 收尾：菜单若还开着，它注册的捕获阶段键盘监听会把后面用例的按键全吃掉
+    if (document.querySelector(".ctx-menu")) {
+      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+      await wait(200);
+    }
+    assert(!document.querySelector(".ctx-menu"), "用例结束时不该留着右键菜单");
+  });
+
+  await ck("选中文本不再弹浮动工具栏（改由右键菜单承担）", async () => {
+    resetDoc(DOC, posOf("正文一。"));
+    select("正文一。");
+    await wait(200);
+    assert(
+      !document.querySelector(".ft-btn, .float-toolbar"),
+      "浮动工具栏应该已经移除，选中文本时不该再出现",
+    );
+  });
+
   await ck("上下键跨过渲染过的块时，先进入那一段的源码（不整块跳）", () => {
     // 第 3 行是一条会长到软换行的段落的源码；它在即时预览里被渲染成块，默认行为会整块跳过去
     const longDoc = "短句一。\n\n" + "长".repeat(200) + "。\n\n短句二。\n";

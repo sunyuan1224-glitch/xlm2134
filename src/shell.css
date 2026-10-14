@@ -238,67 +238,6 @@
   margin-top: 12px;
 }
 
-/* ---------- 浮动工具栏 ---------- */
-.float-toolbar {
-  position: fixed;
-  transform: translate(-50%, -100%);
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  background: rgba(255, 250, 252, 0.94);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 3px 6px;
-  box-shadow: 0 8px 24px rgba(59, 50, 55, 0.16), var(--glow);
-  z-index: 50;
-  animation: ftPop 0.1s var(--ease);
-}
-
-@keyframes ftPop {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -90%) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -100%) scale(1);
-  }
-}
-
-.ft-btn {
-  background: transparent;
-  border: none;
-  color: var(--fg);
-  min-width: 24px;
-  height: 24px;
-  padding: 0 5px;
-  font-size: 12px;
-  border-radius: 12px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-
-.ft-btn:hover {
-  background: var(--bg-hover);
-  color: var(--accent);
-}
-
-.ft-btn.ft-bold { font-weight: 700; }
-.ft-btn.ft-italic { font-style: italic; }
-.ft-btn.ft-strike { text-decoration: line-through; }
-
-.ft-sep {
-  display: inline-block;
-  width: 1px;
-  height: 14px;
-  background: var(--border);
-  margin: 0 3px;
-}
-
 /* ---------- 通用小弹窗 ---------- */
 .prompt-modal {
   max-width: 360px;

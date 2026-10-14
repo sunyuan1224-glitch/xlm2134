@@ -30,7 +30,6 @@ import { ContextMenu } from "./components/ContextMenu";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { MenuBar, type MenuDef } from "./components/MenuBar";
 import { Sidebar } from "./components/Sidebar";
-import { FloatToolbar } from "./components/FloatToolbar";
 import { PromptDialog, type PromptField } from "./components/PromptDialog";
 import { HelpDialog } from "./components/HelpDialog";
 import { AboutDialog } from "./components/AboutDialog";
@@ -136,7 +135,6 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [exportReport, setExportReport] = useState<{ title: string; report: ExportReport } | null>(null);
-  const [floatToolbar, setFloatToolbar] = useState(true);
   const [quickOpen, setQuickOpen] = useState(false);
   const [prompt, setPrompt] = useState<null | {
     title: string;
@@ -795,7 +793,6 @@ export default function App() {
         { label: "源码模式", shortcut: "Ctrl+/", checked: sourceMode, onClick: () => toggleSourceMode() },
         { label: "专注模式", shortcut: "F8", checked: focusMode, onClick: () => toggleFocusMode() },
         { label: "打字机模式", shortcut: "F9", checked: typewriterMode, onClick: () => toggleTypewriterMode() },
-        { label: "浮动工具栏", checked: floatToolbar, onClick: () => setFloatToolbar((v) => !v) },
         "separator",
         { title: "面板" },
         { label: "左侧栏", shortcut: "Ctrl+Shift+L", checked: sidebarOpen, onClick: () => toggleSidebar() },
@@ -987,14 +984,6 @@ export default function App() {
               <div className="editor-blank">从左侧打开一个文件开始写作</div>
             )}
             <PaperCompanion />
-            <FloatToolbar
-              view={viewRef.current}
-              sel={selection}
-              enabled={floatToolbar && !immersive}
-              onCommand={fmt}
-              onLink={insertLinkDialog}
-              onImage={insertImage}
-            />
           </div>
         </div>
 
@@ -1043,6 +1032,7 @@ export default function App() {
             { key: "bold", label: "加粗", disabled: !hasSelection, onClick: () => fmt({ k: "inline", style: "bold" }) },
             { key: "italic", label: "斜体", disabled: !hasSelection, onClick: () => fmt({ k: "inline", style: "italic" }) },
             { key: "strike", label: "删除线", disabled: !hasSelection, onClick: () => fmt({ k: "inline", style: "strike" }) },
+            { key: "highlight", label: "高亮", disabled: !hasSelection, onClick: () => fmt({ k: "inline", style: "highlight" }) },
             { key: "link", label: "超链接", onClick: insertLinkDialog },
             { key: "image", label: "插入图片", onClick: insertImage },
             "separator",
