@@ -175,6 +175,8 @@ export interface SaveDocxInput {
   markdown: string;
   /** 文档标题（章节名） */
   title: string;
+  /** 段内单换行是否保留（来自 Markdown 设置） */
+  preserveLineBreaks?: boolean;
   root: string | null;
   /** 当前文档所在目录（工作区相对路径） */
   baseDir?: string;
@@ -203,13 +205,14 @@ export interface SaveExportResult {
 /** 构建并保存 DOCX。返回结果严格对应实际发生的事。 */
 export async function saveDocxExport(input: SaveDocxInput): Promise<SaveExportResult> {
   const { buildDocx } = await import("./docxExport");
-  const result = await buildDocx(input.markdown, input.title, {
-    root: input.root,
-    baseDir: input.baseDir,
-    readImage: input.readImage,
-    rasterize: input.rasterize,
-    creator: input.creator,
-  });
+    const result = await buildDocx(input.markdown, input.title, {
+      root: input.root,
+      baseDir: input.baseDir,
+      readImage: input.readImage,
+      rasterize: input.rasterize,
+      creator: input.creator,
+      preserveLineBreaks: input.preserveLineBreaks,
+    });
   const pick = input.pickTarget ?? ((name, filters) => api.saveExportFile(name, filters));
   const target = await pick(input.defaultName ?? exportFileName(input.title, "docx"), DOCX_FILTER);
   if (!target) {
@@ -243,6 +246,8 @@ export async function saveDocxExport(input: SaveDocxInput): Promise<SaveExportRe
 export interface SaveEpubInput {
   /** 书名 */
   title: string;
+  /** 段内单换行是否保留（来自 Markdown 设置） */
+  preserveLineBreaks?: boolean;
   author?: string;
   chapters: EpubChapter[];
   root: string | null;
@@ -259,14 +264,15 @@ export interface SaveEpubInput {
 /** 构建并保存 EPUB。 */
 export async function saveEpubExport(input: SaveEpubInput): Promise<SaveExportResult> {
   const { buildEpub } = await import("./epubExport");
-  const result = await buildEpub({
-    title: input.title,
-    author: input.author,
-    chapters: input.chapters,
-    root: input.root,
-    cover: input.cover,
-    readImage: input.readImage,
-  });
+    const result = await buildEpub({
+      title: input.title,
+      author: input.author,
+      chapters: input.chapters,
+      root: input.root,
+      cover: input.cover,
+      readImage: input.readImage,
+      preserveLineBreaks: input.preserveLineBreaks,
+    });
   const pick = input.pickTarget ?? ((name, filters) => api.saveExportFile(name, filters));
   const target = await pick(input.defaultName ?? exportFileName(input.title, "epub"), EPUB_FILTER);
   if (!target) {

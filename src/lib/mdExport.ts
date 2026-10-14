@@ -423,14 +423,19 @@ function extractEscapes(s: string, tk: Tokenizer): string {
 }
 
 /** 硬换行：行尾两个空格或一个反斜杠 */
-function convertBreaks(s: string, tk: Tokenizer): string {
+/**
+ * 段内换行：默认按 Markdown 的软换行处理（折成空格，阅读/导出时几行并成一段）；
+ * preserve=true 时把单换行也当硬换行（`<br>`），也就是"一段一行"的写作习惯。
+ * 这个开关对应 Typora 的 Preserve line breaks（默认同样是关）。
+ */
+function convertBreaks(s: string, tk: Tokenizer, preserve = false): string {
   const lines = s.split("\n");
   let out = lines[0] ?? "";
   for (let i = 1; i < lines.length; i++) {
     const prev = lines[i - 1];
     const hard = /( {2,}|\\)$/.test(prev);
     if (hard) out = out.replace(/( {2,}|\\)$/, "");
-    out += (hard ? tk.push("<br>") : " ") + lines[i];
+    out += (hard || preserve ? tk.push("<br>") : " ") + lines[i];
   }
   return out;
 }
@@ -588,11 +593,13 @@ interface RenderCtx {
   defs?: DefLookup;
   base?: string;
   inlineImageSrc?: boolean;
+  /** 单换行是否按硬换行处理（见 convertBreaks） */
+  preserveLineBreaks?: boolean;
 }
 
 function renderInlineCtx(md: string, ctx: RenderCtx): string {
   const tk = ctx.tk;
-  let s = convertBreaks(md, tk);
+  let s = convertBreaks(md, tk, ctx.preserveLineBreaks);
   s = extractCodeSpans(s, tk);
   s = extractEscapes(s, tk);
   s = extractImages(s, tk, { defs: ctx.defs, base: ctx.base, inlineSrc: ctx.inlineImageSrc });
@@ -684,6 +691,12 @@ const LIST_RE = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 
 export interface MarkdownToHtmlOptions {
   standalone?: boolean;
+  /**
+   * 段内单换行是否保留（渲染成 <br>）。
+   * 默认 false —— 与 Typora 默认一致：编辑视图保留换行，阅读/导出时忽略单换行。
+   * 打开后适合"一段一行"的中文小说稿：粘贴进来的多行会各自成段，不再被并成一段。
+   */
+  preserveLineBreaks?: boolean;
   /** 文档所在目录（相对工作区）；用于把相对图片/链接解析成可移植路径 */
   baseDir?: string;
   /**
@@ -871,7 +884,7 @@ export function markdownToHtml(md: string, title: string, opts: MarkdownToHtmlOp
   const base = opts.baseDir;
   // 所有图像不得在 innerHTML 插入时自动加载远程资源，输出 data-md-src 代替 src
   const inlineImageSrc = opts.inlineImageSrc === true;
-  const renderCtx: RenderCtx = { tk, defs, base, inlineImageSrc };
+  const renderCtx: RenderCtx = { tk, defs, base, inlineImageSrc, preserveLineBreaks: opts.preserveLineBreaks };
   const lines = md.split("\n");
   const body: string[] = [];
 

@@ -72,6 +72,8 @@ export type RasterizeFn = (
 export interface DocxExportOptions extends EmbedImagesOptions {
   /** 文档标题（写进 core 属性） */
   title?: string;
+  /** 段内单换行是否保留（透传给 HTML 渲染，进而变成 Word 的换行符） */
+  preserveLineBreaks?: boolean;
   /** 作者 / 创作者（默认 MyNovel） */
   creator?: string;
   /** 正文图片最大显示宽度（px，96dpi），默认 520 */
@@ -730,13 +732,14 @@ export async function buildDocx(
   title: string,
   options: DocxExportOptions,
 ): Promise<DocxExportResult> {
-  const html = await buildSelfContainedHtml(md, title, {
-    root: options.root,
-    baseDir: options.baseDir,
-    readImage: options.readImage,
-    placeholderClass: options.placeholderClass,
-    standalone: true,
-  });
+    const html = await buildSelfContainedHtml(md, title, {
+      root: options.root,
+      baseDir: options.baseDir,
+      readImage: options.readImage,
+      placeholderClass: options.placeholderClass,
+      preserveLineBreaks: options.preserveLineBreaks,
+      standalone: true,
+    });
   return buildDocxFromHtml(html.html, title, {
     ...options,
     issues: html.errors,

@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "../src/App";
 import { useStore } from "../src/store";
+import { getMarkdownPrefs } from "../src/lib/markdownPrefs";
 import "../src/main";
 
 const send = (text: string) => (window as any).webkit.messageHandlers.result.postMessage(text);
@@ -169,6 +170,25 @@ async function run() {
   );
   viewMenu.click(); // 收起，交回下面的流程
   await wait();
+
+  // 视图 → 「保留单换行」：开关必须真的写进设置（预览与导出都读这一份）
+  {
+    const itemOf = () =>
+      [...document.querySelectorAll<HTMLElement>(".menu-item")].find((i) => i.textContent?.includes("保留单换行"));
+    viewMenu.click();
+    await wait();
+    const item = itemOf();
+    assert(item, "视图菜单里应该有「保留单换行」这一项");
+    const before = getMarkdownPrefs().preserveLineBreaks;
+    item!.click();
+    await wait();
+    assert(getMarkdownPrefs().preserveLineBreaks !== before, "点击后设置应翻转");
+    viewMenu.click();
+    await wait();
+    itemOf()!.click();
+    await wait();
+    assert(getMarkdownPrefs().preserveLineBreaks === before, "再点一次应回到原状（别影响后面的截图）");
+  }
 
   viewMenu.click();
   await wait();

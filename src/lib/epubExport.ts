@@ -64,6 +64,8 @@ export interface EpubVolume {
 export interface EpubExportOptions extends Omit<EmbedImagesOptions, "baseDir"> {
   /** 书名 */
   title: string;
+  /** 段内单换行是否保留（透传给 HTML 渲染） */
+  preserveLineBreaks?: boolean;
   /** 作者 */
   author?: string;
   /** 语言（默认 zh-CN） */
@@ -248,12 +250,13 @@ export async function buildChapterContent(
   warnings: ExportWarning[],
 ): Promise<ChapterContent> {
   const baseDir = dirOf(chapter.path);
-  const selfContained = await buildSelfContainedHtml(chapter.markdown, chapter.title, {
-    root: options.root,
-    baseDir,
-    readImage: options.readImage,
-    placeholderClass: options.placeholderClass,
-    standalone: false,
+    const selfContained = await buildSelfContainedHtml(chapter.markdown, chapter.title, {
+      root: options.root,
+      baseDir,
+      readImage: options.readImage,
+      placeholderClass: options.placeholderClass,
+      preserveLineBreaks: options.preserveLineBreaks,
+      standalone: false,
     csp: false,
     placeholderStyles: false,
   });
