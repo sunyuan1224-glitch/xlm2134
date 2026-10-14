@@ -11,7 +11,7 @@ interface Props {
 }
 
 // 与 package.json 的 version 保持一致
-const VERSION = "0.1.3";
+const VERSION = "0.1.4";
 
 const CAN_DO = [
   "粉白亮色、Typora 式写作：正文栏居中约 752px，光标所在块显示源码、其余块即时渲染，Ctrl+/ 随时切回源码模式",
