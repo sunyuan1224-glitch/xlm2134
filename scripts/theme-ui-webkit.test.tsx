@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "../src/App";
 import { useStore } from "../src/store";
 import { api } from "../src/api";
+import { getTheme } from "../src/lib/theme";
 import "../src/main";
 
 const send = (text: string) => (window as any).webkit.messageHandlers.result.postMessage(text);
@@ -235,12 +236,59 @@ async function run() {
   assert(!document.querySelector(".pane-right, .pane-handle-right"), "Closing workbench must leave no placeholder");
   click(".menu-root", "主题");
   await wait();
-  assert(document.querySelector(".menu-pop")?.textContent?.includes("粉白（当前）"), "Theme menu must name current palette");
+  assert(
+    (document.querySelector(".menu-pop")?.textContent ?? "").includes("粉白"),
+    "Theme menu must list the palettes",
+  );
   click(".menu-item", "字体与排版…");
   await wait();
   assert(document.querySelector(".settings-mask"), "Typography must remain available in theme menu");
 
   /* ---------------- 字体下拉（Word 式 + 可搜索）与「滑块移除」 ---------------- */
+
+  /* ---------------- 主题切换：粉白 ⇄ 暗色，纸面必须跟着变 ---------------- */
+  {
+    const rgbOf = (css: string) => (css.match(/\d+(?:\.\d+)?/g) ?? []).slice(0, 3).map(Number);
+    const paper = () => {
+      for (const sel of [".cm-editor", ".cm-content", ".cm-scroller"]) {
+        const el = document.querySelector<HTMLElement>(sel);
+        if (!el) continue;
+        const bg = getComputedStyle(el).backgroundColor;
+        if (!/rgba?\(0, 0, 0, 0\)|transparent/.test(bg)) return bg;
+      }
+      return "transparent";
+    };
+    const dark = (css: string) => Math.max(...rgbOf(css)) < 90;
+    const light = (css: string) => Math.min(...rgbOf(css)) > 200;
+
+    const themeMenu = [...document.querySelectorAll<HTMLButtonElement>(".menu-root")].find(
+      (b) => b.textContent?.trim() === "主题",
+    )!;
+    const itemOf = (label: string) =>
+      [...document.querySelectorAll<HTMLElement>(".menu-item")].find((i) => (i.textContent ?? "").includes(label));
+
+    assert(getTheme() === "light", `默认主题应为 light，实际 ${getTheme()}`);
+    assert(light(paper()), `粉白下纸面应是浅色，实际 ${paper()}`);
+
+    themeMenu.click();
+    await wait();
+    assert(itemOf("粉白") && itemOf("暗色"), "主题菜单里应该有「粉白」与「暗色」两项");
+    itemOf("暗色")!.click();
+    await wait(300);
+    assert(document.documentElement.dataset.theme === "dark", "切到暗色后 <html data-theme> 应为 dark");
+    assert(dark(paper()), `暗色下纸面必须变深（R/G/B 都要 < 90），实际 ${paper()}`);
+    const menubarBg = getComputedStyle(document.querySelector<HTMLElement>(".menubar")!).backgroundColor;
+    assert(dark(menubarBg), `暗色下面板也该变深，实际 ${menubarBg}`);
+    send("SHOT: dark");
+    await wait(300);
+
+    themeMenu.click();
+    await wait();
+    itemOf("粉白")!.click();
+    await wait(300);
+    assert(document.documentElement.dataset.theme === "light", "切回粉白后应为 light");
+    assert(light(paper()), `切回后纸面应恢复浅色，实际 ${paper()}`);
+  }
   {
     assert(document.querySelector(".font-combo"), "设置里应该有字体下拉");
     // 只去掉「字号」那个滑块；行距的滑块保留，所以按行精确检查

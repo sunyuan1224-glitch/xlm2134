@@ -154,7 +154,7 @@
   align-items: center;
   gap: 4px;
   padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--surface-translucent);
   border-bottom: 1px solid var(--border);
 }
 

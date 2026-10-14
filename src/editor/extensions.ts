@@ -147,7 +147,11 @@ export const baseTheme = EditorView.theme(
     },
     ".cm-lp-img-loading": { opacity: "0.55" },
     /* ==高亮== ^上标^ ~下标~ 渲染后的样子（HTML 是 markdownToHtml 生成的，这里只补样式） */
-    ".cm-lp-rendered mark": { background: "rgba(172, 63, 112, .18)", color: "inherit", borderRadius: "2px" },
+    ".cm-lp-rendered mark": {
+      background: "var(--highlight-bg, rgba(172, 63, 112, .18))",
+      color: "inherit",
+      borderRadius: "2px",
+    },
     ".cm-lp-rendered sup, .cm-lp-rendered sub": { fontSize: "0.76em", lineHeight: "0" },
 
     /* ---------------- 标记着色（Markdown 语法高亮） ---------------- */

@@ -46,6 +46,7 @@ import {
 } from "./lib/exportActions";
 import { resolveLink, findAnchorPos } from "./lib/links";
 import { setTypography, useTypography } from "./lib/typography";
+import { setTheme, useTheme } from "./lib/theme";
 import { epubVolumeRef, groupItemsByVolume, isBookOutlinePath } from "./lib/volume";
 import { bookTitleFrom } from "./lib/bookOutline";
 
@@ -117,6 +118,7 @@ export default function App() {
   const typewriterMode = useStore((s) => s.typewriterMode);
   const toggleTypewriterMode = useStore((s) => s.toggleTypewriterMode);
   const typography = useTypography();
+  const theme = useTheme();
 
   const viewRef = useRef<EditorView | null>(null);
   const [menu, setMenu] = useState<
@@ -826,7 +828,8 @@ export default function App() {
     {
       label: "主题",
       items: [
-        { label: "粉白（当前）", checked: true, onClick: () => {} },
+        { label: "粉白", checked: theme === "light", onClick: () => setTheme("light") },
+        { label: "暗色", checked: theme === "dark", onClick: () => setTheme("dark") },
         "separator",
         { label: "字体与排版…", shortcut: "Ctrl+,", onClick: () => setShowSettings(true) },
         { label: `当前字号 ${typography.fontSize}px`, disabled: true, onClick: () => {} },

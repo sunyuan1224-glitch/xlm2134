@@ -36,8 +36,52 @@
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
   --dur: 0.14s;
   --glow: 0 0 0 1px rgba(172, 63, 112, 0.22), 0 2px 10px rgba(172, 63, 112, 0.1);
+  /* 行内高亮（==重点==）的底色；暗色主题会覆盖成更亮的粉 */
+  --highlight-bg: rgba(172, 63, 112, 0.18);
+  /* 半透明小表面（侧栏标签条这类） */
+  --surface-translucent: rgba(255, 255, 255, 0.5);
   --press: translateY(1px) scale(0.97);
   color-scheme: light;
+}
+
+/*
+ * 暗色主题：整块覆盖上面那套颜色变量。
+ *
+ * 为什么用「覆盖」而不是把 :root 拆成两套：:root[data-theme="dark"] 的选择器优先级
+ * 比 :root 高，所以这里的值一定会赢；而没被覆盖到的变量（圆角、动效、字体、
+ * 编辑器字号这些与颜色无关的）自然沿用 :root，不用抄一遍。粉白那一份也就不用挪动，
+ * 升级上来的用户界面一个字节都不会变。
+ *
+ * 取色沿用旧版那套 Catppuccin Mocha 风格（粉紫系，与本应用的粉白是同一个色脉）。
+ * 关键一条：**纸面必须跟着暗**——--bg / --bg-editor 都是深色，正文面、即时预览块、
+ * 面板、状态栏、菜单、对话框全走这套变量，暗色下不留任何白色表面。
+ */
+:root[data-theme="dark"] {
+  --bg: #1e1e2e;
+  --bg-editor: #1e1e2e;
+  --bg-panel: #181825;
+  --bg-code: #313244;
+  --bg-dim: var(--bg-code);
+  --bg-hover: #313244;
+  --bg-active: #45475a;
+  --fg: #cdd6f4;
+  --fg-strong: #f5e0dc;
+  --fg-dim: #7f849c;
+  --border: #45475a;
+  --accent: #f5c2e7;
+  --accent-dim: #cba6f7;
+  --sel-bg: rgba(245, 194, 231, 0.25);
+  --kw: #cba6f7;
+  --str: #a6e3a1;
+  --num: #fab387;
+  --type: #74c7ec;
+  --code-fg: #bac2de;
+  --danger: #f38ba8;
+  --ok: #a6e3a1;
+  --glow: 0 0 0 1px rgba(245, 194, 231, 0.22), 0 2px 10px rgba(245, 194, 231, 0.1);
+  --highlight-bg: rgba(245, 194, 231, 0.3);
+  --surface-translucent: rgba(255, 255, 255, 0.06);
+  color-scheme: dark;
 }
 
 * {
@@ -71,7 +115,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse at 50% 30%, #fbeef3 0%, #fffafc 70%);
+  background: radial-gradient(ellipse at 50% 30%, var(--bg-panel) 0%, var(--bg) 70%);
 }
 
 .welcome-inner {
