@@ -26,8 +26,6 @@ import { blockComplexity } from "../lib/markdownBlocks";
 export interface PreviewOptions {
   onLink?: (href: string, mod: boolean) => void;
   image?: (src: string) => Promise<string | null>;
-  /** 段内单换行是否保留（对应 Markdown 设置里的"保留单换行"） */
-  preserveLineBreaks?: boolean;
 }
 
 /**
@@ -40,13 +38,8 @@ export interface PreviewOptions {
  * 兼容垫片，**它从来没生效过**：探针里 md 和 document 传的是同一份文本，不跨块也照样能断言成功，
  * 所以探测恒为 true。既然探测是假的、垫片是死的，就一并删了，只留下面这行直接依赖。
  */
-function renderBlock(raw: string, doc: string, from: number, preserveLineBreaks = false): string {
-  return markdownToHtml(raw, "", {
-    standalone: false,
-    document: doc,
-    sourceOffset: from,
-    preserveLineBreaks,
-  });
+function renderBlock(raw: string, doc: string, from: number): string {
+  return markdownToHtml(raw, "", { standalone: false, document: doc, sourceOffset: from });
 }
 
 /* ================================================================== *
@@ -245,7 +238,7 @@ export function livePreview(options: PreviewOptions = {}): Extension {
       const key = from + ":" + to;
       let html = cacheHtml.get(key);
       if (html === undefined) {
-        html = renderBlock(raw, doc, from, options.preserveLineBreaks);
+        html = renderBlock(raw, doc, from);
         cacheHtml.set(key, html);
       }
       add(from, to, html);

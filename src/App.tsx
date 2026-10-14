@@ -47,7 +47,6 @@ import {
 } from "./lib/exportActions";
 import { resolveLink, findAnchorPos } from "./lib/links";
 import { setTypography, useTypography } from "./lib/typography";
-import { setMarkdownPrefs, useMarkdownPrefs } from "./lib/markdownPrefs";
 import { epubVolumeRef, groupItemsByVolume, isBookOutlinePath } from "./lib/volume";
 import { bookTitleFrom } from "./lib/bookOutline";
 
@@ -119,7 +118,6 @@ export default function App() {
   const typewriterMode = useStore((s) => s.typewriterMode);
   const toggleTypewriterMode = useStore((s) => s.toggleTypewriterMode);
   const typography = useTypography();
-  const { preserveLineBreaks } = useMarkdownPrefs();
 
   const viewRef = useRef<EditorView | null>(null);
   const [menu, setMenu] = useState<
@@ -390,13 +388,12 @@ export default function App() {
     if (content === undefined || !activePath) return;
     try {
       useStore.getState().setStatus(`正在生成 DOCX（${docTitle}）…`);
-        const res = await saveDocxExport({
-          markdown: content,
-          title: docTitle,
-          root,
-          baseDir: docDir(),
-          preserveLineBreaks,
-          sourcePath: activePath,
+      const res = await saveDocxExport({
+        markdown: content,
+        title: docTitle,
+        root,
+        baseDir: docDir(),
+        sourcePath: activePath,
       });
       if (res.cancelled) {
         useStore.getState().setStatus("已取消导出 DOCX");
@@ -430,12 +427,11 @@ export default function App() {
     if (content === undefined || !activePath) return;
     try {
       useStore.getState().setStatus(`正在生成 EPUB 电子书…`);
-        const res = await saveEpubExport({
-          title: docTitle,
-          chapters: [{ title: docTitle, markdown: content, path: activePath }],
-          root,
-          preserveLineBreaks,
-          sourcePath: activePath,
+      const res = await saveEpubExport({
+        title: docTitle,
+        chapters: [{ title: docTitle, markdown: content, path: activePath }],
+        root,
+        sourcePath: activePath,
       });
       if (res.cancelled) {
         useStore.getState().setStatus("已取消导出 EPUB");
@@ -525,12 +521,11 @@ export default function App() {
     );
 
     try {
-        const res = await saveEpubExport({
-          title: bookTitle,
-          chapters: epubChapters,
-          root: st.root,
-          preserveLineBreaks,
-          sourcePath: null,
+      const res = await saveEpubExport({
+        title: bookTitle,
+        chapters: epubChapters,
+        root: st.root,
+        sourcePath: null,
         defaultName: exportFileName(bookTitle, "epub"),
       });
       if (res.cancelled) {
@@ -785,11 +780,6 @@ export default function App() {
         { label: "专注模式", shortcut: "F8", checked: focusMode, onClick: () => toggleFocusMode() },
         { label: "打字机模式", shortcut: "F9", checked: typewriterMode, onClick: () => toggleTypewriterMode() },
         { label: "浮动工具栏", checked: floatToolbar, onClick: () => setFloatToolbar((v) => !v) },
-        {
-          label: "保留单换行（一段一行，阅读/导出时不并段）",
-          checked: preserveLineBreaks,
-          onClick: () => setMarkdownPrefs({ preserveLineBreaks: !preserveLineBreaks }),
-        },
         "separator",
         { title: "面板" },
         { label: "左侧栏", shortcut: "Ctrl+Shift+L", checked: sidebarOpen, onClick: () => toggleSidebar() },

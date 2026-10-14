@@ -16,7 +16,6 @@ import { markdown } from "@codemirror/lang-markdown";
 import { isInCode, livePreview } from "./livePreview";
 import { installImeGuard, planExternalSync, type ImeGuard } from "./ime";
 import { listKeys } from "./listKeys";
-import { useMarkdownPrefs } from "../lib/markdownPrefs";
 import { baseTheme, highlightStyle, sourceHighlightStyle } from "./extensions";
 import { syntaxHighlighting } from "@codemirror/language";
 import { api } from "../api";
@@ -64,8 +63,6 @@ export function Editor({
   /** 编辑器自己通过 onChange 回显给 store 的正文：用来区分外部改写与自身回显。 */
   const echoRef = useRef<string | null>(null);
   const mode = useRef(new Compartment());
-  /** 段内单换行是否保留：改动后要重配预览（块 HTML 有缓存，不重配还是旧的） */
-  const { preserveLineBreaks } = useMarkdownPrefs();
   const cbs = useRef({ typewriterMode, onLinkClick, onHeadingClick, onChange, onSave, onCursor, onSelectionChange, contextMenu });
   cbs.current = { typewriterMode, onLinkClick, onHeadingClick, onChange, onSave, onCursor, onSelectionChange, contextMenu };
 
@@ -73,7 +70,6 @@ export function Editor({
     syntaxHighlighting(source ? sourceHighlightStyle : highlightStyle),
     ...(source ? [] : [livePreview({
       onLink: (href, mod) => cbs.current.onLinkClick?.(href, mod),
-      preserveLineBreaks,
       image: async src => {
         const root = useStore.getState().root;
         if (!root) return null;
@@ -254,16 +250,6 @@ export function Editor({
     }, "mode");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceMode]);
-
-  // 「保留单换行」改动后同样重配一遍预览，否则屏幕上还是旧块
-  useEffect(() => {
-    const view = viewRef.current;
-    if (!view) return;
-    whenImeIdle(() => {
-      if (viewRef.current === view) view.dispatch({ effects: mode.current.reconfigure(modeExtensions(sourceMode)) });
-    }, "mode");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preserveLineBreaks]);
 
   useEffect(() => {
     const view = viewRef.current;

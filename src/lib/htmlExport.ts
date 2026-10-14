@@ -404,8 +404,6 @@ export function injectCsp(html: string, policy: string = EXPORT_CSP): string {
 export interface SelfContainedOptions extends EmbedImagesOptions {
   /** 完整文档；false 时只返回内嵌处理后的片段（供剪贴板复制） */
   standalone?: boolean;
-  /** 段内单换行是否渲染成 <br>（默认 false，同 Typora 默认） */
-  preserveLineBreaks?: boolean;
   /** 是否注入 CSP（默认跟随 standalone） */
   csp?: boolean;
   /** 是否注入占位块样式（默认跟随 standalone） */
@@ -428,7 +426,7 @@ export async function buildSelfContainedHtml(
   opts: SelfContainedOptions,
 ): Promise<SelfContainedResult> {
   const standalone = opts.standalone !== false;
-  const rendered = markdownToHtml(md, title, { standalone, preserveLineBreaks: opts.preserveLineBreaks });
+  const rendered = markdownToHtml(md, title, { standalone });
   const res = await embedWorkspaceImages(rendered, opts);
   let html = res.html;
   let applied: string | null = null;

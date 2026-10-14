@@ -265,25 +265,4 @@ title: 测试文档
   console.log('PASS: 行内高亮 / 上标 / 下标解析与导出样式');
 }
 
-/* 9. 段内单换行：默认折成空格（软换行）；打开「保留单换行」后渲染成 <br> */
-{
-  const md = "第一行\n第二行\n\n第二段。";
-
-  const soft = markdownToHtml(md, "", { standalone: false });
-  assert.ok(soft.includes("第一行 第二行"), "默认把段内单换行折成空格（Markdown 软换行语义）");
-  assert.ok(!soft.includes("<br>"), "默认不产生硬换行");
-
-  const kept = markdownToHtml(md, "", { standalone: false, preserveLineBreaks: true });
-  assert.ok(kept.includes("第一行<br>第二行"), "打开后段内单换行渲染成 <br>");
-  assert.ok(kept.includes("<p>第二段。</p>"), "空行仍是段落分隔，不受该开关影响");
-
-  const hard = markdownToHtml("第一行  \n第二行", "", { standalone: false });
-  assert.ok(hard.includes("第一行<br>第二行"), "行尾两个空格始终是硬换行，与该开关无关");
-
-  const exported = markdownToHtml(md, "标题", { standalone: true, preserveLineBreaks: true });
-  assert.ok(exported.includes("第一行<br>第二行"), "独立导出文档（HTML / EPUB / DOCX 共用）同样保留单换行");
-
-  console.log('PASS: 段内单换行开关（默认折空格 / 打开保留）');
-}
-
 console.log('\nALL PASS: 所有 Markdown 引用语义、图片防加载、任务框定位与脚注索引导航测试通过！');
