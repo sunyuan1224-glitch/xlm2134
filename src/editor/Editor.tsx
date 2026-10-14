@@ -270,6 +270,32 @@ export function Editor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typewriterMode]);
 
+  /*
+   * 消费 store 的「跳到某一段」请求（校对面板点「定位」时发出）。
+   *
+   * 等文档就位再动手：切文件时本组件会重建 state，若在旧文档上 dispatch，
+   * 偏移量会落到错误的位置。所以这里同时盯 path / initialContent，
+   * 文档对了才跳，之后再清掉请求（带 nonce，连点同一处也有效）。
+   */
+  const reveal = useStore((s) => s.reveal);
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !reveal) return;
+    if (useStore.getState().activePath !== reveal.path) return;
+    if (view.state.doc.toString() !== initialContent) return;
+    whenImeIdle(() => {
+      const v = viewRef.current;
+      if (!v) return;
+      const max = v.state.doc.length;
+      const from = Math.max(0, Math.min(reveal.from, max));
+      const to = Math.max(from, Math.min(reveal.to, max));
+      v.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
+      v.focus();
+      useStore.getState().clearReveal();
+    }, "reveal");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal, path, initialContent]);
+
   // 外部内容变化时同步（例如从别处加载）
   useEffect(() => {
     const view = viewRef.current;

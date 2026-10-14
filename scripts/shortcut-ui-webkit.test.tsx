@@ -398,6 +398,25 @@ async function run() {
     );
   });
 
+  await ck("校对面板「定位」跳到问题处并选中（以前是摆设）", async () => {
+    // 中文语境里的半角逗号一定命中校对规则
+    resetDoc("他说,好。\n", 0);
+    useStore.setState({ workbenchOpen: true, workTab: "proofread" });
+    await wait(700);
+    const btn = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) =>
+      (b.textContent ?? "").includes("定位首个"),
+    );
+    assert(btn, `校对面板里应该有「定位首个」按钮，实际按钮：${[...document.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim()).slice(0, 12).join(" | ")}`);
+    btn!.click();
+    await wait(500);
+    const sel = view().state.selection.main;
+    const picked = view().state.sliceDoc(sel.from, sel.to);
+    assert(picked.length > 0, `点「定位」后编辑器里应该有选区，实际没有`);
+    assert(picked.includes(","), `选区应落在半角逗号上，实际选中了 ${JSON.stringify(picked)}`);
+    useStore.setState({ workbenchOpen: false, workTab: "plot" });
+    resetDoc(DOC, 0);
+  });
+
   await ck("侧车（伏笔 / 时间线 / 设定）跟着书文件夹走，不落在工作区根", () => {
     // 书下的章 → work 取第一段（书），侧车落在 <书>/.novel/
     useStore.setState({ root: ROOT, activePath: "我见/序章.md", files: ["我见/序章.md"] });

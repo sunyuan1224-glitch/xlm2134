@@ -137,6 +137,15 @@ interface AppState {
   refresh: () => Promise<boolean>;
   openFile: (path: string) => Promise<void>;
   /**
+   * 跳到正文里的某一段（校对面板的「定位」用）。
+   * 目标不是当前文件时先切过去；编辑器会在自己的文档就位后消费这次请求：
+   * 移光标 + 选中 [from, to) + 滚动到可见 + 聚焦。
+   */
+  revealAt: (path: string, from: number, to: number) => Promise<void>;
+  /** 待跳转请求；编辑器处理完清掉（带 nonce，连续点同一处也能重新触发） */
+  reveal?: { path: string; from: number; to: number; nonce: number } | null;
+  clearReveal: () => void;
+  /**
    * 只把文件内容读进内存（不改 activePath、不标脏、不加标签页）。
    * 供「旁路编辑器」使用（大纲面板的总纲），已加载过则直接返回。
    */
@@ -424,6 +433,13 @@ export const useStore = create<AppState>((set, get) => ({
       return false;
     }
   },
+
+  revealAt: async (path, from, to) => {
+    if (get().activePath !== path) await get().openFile(path);
+    set({ reveal: { path, from, to, nonce: Date.now() } });
+  },
+
+  clearReveal: () => set({ reveal: null }),
 
   openFile: async (path) => {
     const { root, openTabs } = get();

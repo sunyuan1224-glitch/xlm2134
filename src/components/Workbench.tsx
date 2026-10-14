@@ -112,9 +112,13 @@ function ProofreadCurrent() {
   return (
     <ProofreadPanel
       text={content}
-      path={activePath}
-      ignored={ignored}
-      openFile={(path) => void openFile(path)}
+        path={activePath}
+        ignored={ignored}
+        // 精确定位：面板已经把每条问题的 [from, to) 算好了，直接让编辑器选中它
+        onLocate={(issue) => {
+          if (activePath) void useStore.getState().revealAt(activePath, issue.from, issue.to);
+        }}
+        openFile={(path) => void openFile(path)}
       onIgnore={(issue) => {
         const k = issueKey(issue);
         if (!ignored.includes(k)) persist([...ignored, k]);
