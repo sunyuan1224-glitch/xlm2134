@@ -27,6 +27,8 @@ export const SHORTCUTS: [string, string][] = [
   ["Ctrl+Shift+B", "显示 / 收起小说工作台"],
   ["Ctrl+B / Ctrl+I / Ctrl+U", "加粗 / 斜体 / 下划线"],
   ["Alt+Shift+5", "删除线"],
+  ["Ctrl+Shift+H", "高亮"],
+  ["Ctrl+Shift+↑ / Ctrl+Shift+↓", "上标 / 下标"],
   ["Ctrl+1..6 / Ctrl+0", "标题等级：一级到六级 / 变回正文（同级再按一次取消）"],
   ["Ctrl+K", "超链接"],
   ["Ctrl+Shift+I", "插入本地图片（复制进 assets/）"],

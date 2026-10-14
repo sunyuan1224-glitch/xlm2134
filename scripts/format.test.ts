@@ -35,7 +35,16 @@ const sel = (text: string, from: number, to: number, cmd: Parameters<typeof appl
 
   assert.equal(sel("正文。", 0, 3, { k: "inline", style: "italic" }), "*正文。*", "斜体");
   assert.equal(sel("正文。", 0, 3, { k: "inline", style: "underline" }), "<u>正文。</u>", "下划线");
-  assert.equal(sel("正文。", 0, 3, { k: "inline", style: "strike" }), "~~正文。~~", "删除线");
+    assert.equal(sel("正文。", 0, 3, { k: "inline", style: "strike" }), "~~正文。~~", "删除线");
+    assert.equal(sel("正文。", 0, 3, { k: "inline", style: "highlight" }), "==正文。==", "高亮");
+    assert.equal(sel("2", 0, 1, { k: "inline", style: "sup" }), "^2^", "上标");
+    assert.equal(sel("2", 0, 1, { k: "inline", style: "sub" }), "~2~", "下标");
+
+    // 高亮与上下标同样遵守「同一命令再来一次 = 取消」
+    const hl = sel("正文。", 0, 3, { k: "inline", style: "highlight" });
+    assert.equal(sel(hl, 0, hl.length, { k: "inline", style: "highlight" }), "正文。", "对已高亮文本再高亮 = 取消");
+    const sup = sel("2", 0, 1, { k: "inline", style: "sup" });
+    assert.equal(sel(sup, 0, sup.length, { k: "inline", style: "sup" }), "2", "对已上标文本再上标 = 取消");
 
   // 空选区也会插入一对标记，光标落在中间
   const empty = applyFormatToText("正文。", 1, 1, { k: "inline", style: "bold" });
@@ -94,6 +103,7 @@ const sel = (text: string, from: number, to: number, cmd: Parameters<typeof appl
   assert.equal(run("# 标题 **粗** `码`", 0, { k: "clearFormat" }), "标题 粗 码", "去掉标题与行内标记，正文保留");
   assert.equal(run("- 项目", 1, { k: "clearFormat" }), "项目", "去掉列表标记");
   assert.equal(run("> 引用 ~~删~~", 0, { k: "clearFormat" }), "引用 删", "去掉引用与删除线标记");
+  assert.equal(run("==重点== ^上^ ~下~", 0, { k: "clearFormat" }), "重点 上 下", "去掉高亮 / 上标 / 下标标记");
 }
 
 /* ------------------------------------------------------------------ *

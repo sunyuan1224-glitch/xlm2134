@@ -35,6 +35,7 @@ export interface ExportInline {
   strike?: boolean;
   sup?: boolean;
   sub?: boolean;
+  mark?: boolean;
   /** link：地址（已校验安全），internal 表示文档内锚点 */
   href?: string;
   internal?: boolean;
@@ -353,6 +354,7 @@ interface InlineStyle {
   strike?: boolean;
   sup?: boolean;
   sub?: boolean;
+  mark?: boolean;
 }
 
 function inlinesFrom(node: HtmlNode, style: InlineStyle, warn: (w: ExportWarning) => void): ExportInline[] {
@@ -377,6 +379,8 @@ function inlinesFrom(node: HtmlNode, style: InlineStyle, warn: (w: ExportWarning
     case "s":
     case "strike":
       return node.children.flatMap((c) => inlinesFrom(c, { ...style, strike: true }, warn));
+    case "mark":
+      return node.children.flatMap((c) => inlinesFrom(c, { ...style, mark: true }, warn));
     case "sup":
       return node.children.flatMap((c) => inlinesFrom(c, { ...style, sup: true }, warn));
     case "sub":

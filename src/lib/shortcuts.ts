@@ -35,10 +35,18 @@ const SHIFTED_TO_BASE: Record<string, string> = {
   ")": "0",
 };
 
+/** 方向键在帮助文案里写作 ↑ ↓ ← →，而 event.key 给的是 ArrowUp 这一套，这里做一次归一 */
+const ARROW_ALIAS: Record<string, string> = {
+  "↑": "arrowup",
+  "↓": "arrowdown",
+  "←": "arrowleft",
+  "→": "arrowright",
+};
+
 /** 把 event.key 折算成不带 Shift 的基础键（"}" → "]"、"%" → "5"） */
 export function baseKey(key: string): string {
   const k = (key || "").toLowerCase();
-  return SHIFTED_TO_BASE[k] ?? k;
+  return SHIFTED_TO_BASE[k] ?? ARROW_ALIAS[k] ?? k;
 }
 
 /**
@@ -69,6 +77,9 @@ export const FORMAT_HOTKEYS: FormatHotkey[] = [
   { keys: "Ctrl+I", cmd: { k: "inline", style: "italic" } },
   { keys: "Ctrl+U", cmd: { k: "inline", style: "underline" } },
   { keys: "Alt+Shift+5", cmd: { k: "inline", style: "strike" } },
+  { keys: "Ctrl+Shift+H", cmd: { k: "inline", style: "highlight" } },
+  { keys: "Ctrl+Shift+↑", cmd: { k: "inline", style: "sup" } },
+  { keys: "Ctrl+Shift+↓", cmd: { k: "inline", style: "sub" } },
   { keys: "Ctrl+1", cmd: { k: "heading", level: 1 } },
   { keys: "Ctrl+2", cmd: { k: "heading", level: 2 } },
   { keys: "Ctrl+3", cmd: { k: "heading", level: 3 } },

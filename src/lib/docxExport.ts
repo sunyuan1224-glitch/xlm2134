@@ -24,6 +24,7 @@ import {
   Document,
   ExternalHyperlink,
   HeadingLevel,
+  HighlightColor,
   ImageRun,
   LevelFormat,
   Packer,
@@ -290,8 +291,10 @@ function inlinesToRuns(
             text: it.text ?? "",
             bold: it.bold || opts.forceBold || undefined,
             italics: it.italic || undefined,
-            strike: it.strike || undefined,
-            superScript: it.sup || undefined,
+              strike: it.strike || undefined,
+              // Word 的高亮只有固定 16 色（没有粉色），取最贴近"荧光笔"语义的黄色
+              highlight: it.mark ? HighlightColor.YELLOW : undefined,
+              superScript: it.sup || undefined,
             subScript: it.sub || undefined,
           }),
         );

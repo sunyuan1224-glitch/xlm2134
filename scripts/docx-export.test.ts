@@ -336,3 +336,20 @@ await assert.rejects(
 console.log("✓ 动作层取消/拦截/成功/失败报告验证通过");
 
 console.log("=== 所有 DOCX 导出测试通过 ===");
+
+/*
+ * 行内高亮 / 上标 / 下标必须真的进 Word：
+ * OOXML 里高亮落在 <w:highlight w:val="yellow"/>，上下标落在 <w:vertAlign w:val="superscript|subscript"/>。
+ * 这三样只要断在 document.xml 上，就说明「编辑器里写 ==重点== ^2^ ~2~ → Word 里能看见」这条链路是通的。
+ */
+{
+  const inlineRes = await buildDocx("普通 ==重点== 与 ^上标^ 与 ~下标~ 文本。\n", "行内标记", { root: null });
+  assertZipMagic(inlineRes.bytes, "行内标记 DOCX");
+  const inlineXml = textOf(unzip(inlineRes.bytes), "word/document.xml");
+  assert.ok(inlineXml.includes('<w:highlight w:val="yellow"/>'), `高亮需写成 Word 高亮：${inlineXml.match(/<w:highlight[^>]*>/g)}`);
+  assert.ok(inlineXml.includes('<w:vertAlign w:val="superscript"/>'), "上标需写成 vertAlign=superscript");
+  assert.ok(inlineXml.includes('<w:vertAlign w:val="subscript"/>'), "下标需写成 vertAlign=subscript");
+  assert.ok(inlineXml.includes(">重点<") && inlineXml.includes(">上标<") && inlineXml.includes(">下标<"), "文字本身不能被吃掉");
+  assert.ok(!/\^|\+|==|~/.test(inlineXml.replace(/<[^>]*>/g, "")), "标记符号不得残留在正文里");
+  console.log("PASS: 高亮 / 上标 / 下标落到 Word 的 OOXML 上");
+}

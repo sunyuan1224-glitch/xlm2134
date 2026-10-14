@@ -59,7 +59,7 @@ function makeTokenizer(): Tokenizer {
 }
 
 const INLINE_TAGS = new Set([
-  "u", "kbd", "s", "del", "ins", "em", "i", "b", "strong",
+  "u", "mark", "sub", "sup", "kbd", "s", "del", "ins", "em", "i", "b", "strong",
   "code", "small", "cite", "q", "abbr", "br",
 ]);
 
@@ -557,6 +557,17 @@ function extractEmphasis(s: string, ctx: RenderCtx, depth = 0): string {
   out = out.replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, (_m, t: string) => tk.push(`<strong>${inner(t)}</strong>`));
   out = out.replace(/(^|[^\w])__(?=\S)([\s\S]*?\S)__(?!\w)/g, (_m, p: string, t: string) => p + tk.push(`<strong>${inner(t)}</strong>`));
   out = out.replace(/~~(?=\S)([\s\S]*?\S)~~/g, (_m, t: string) => tk.push(`<del>${inner(t)}</del>`));
+  /*
+   * Typora 那套行内语法：==高亮== ^上标^ ~下标~（下标必须排在删除线之后，且避开 ~~ 的另一半）。
+   *
+   * 三个规则的边界都要挡住两类"同样含这些符号"的文本，否则会跨着把它们吃掉：
+   *   - 脚注引用 [^1]：它的 ^ 两侧是方括号，所以标记左边不许紧跟 [；
+   *   - 公式 $E = mc^2$：一行里可能有两个 ^（比如再带一个脚注），所以内容里不许出现 $ [ ] \。
+   * 只禁这两类字符，`第 ^3^ 次` 这种前面是空格的正常写法照样成立。
+   */
+  out = out.replace(/(^|[^=\[$])==(?=\S)([^=\[\]$\n\\]*?\S)==/g, (_m, p: string, t: string) => p + tk.push(`<mark>${inner(t)}</mark>`));
+  out = out.replace(/(^|[^\^\[$])\^(?=\S)([^\^\[\]$\n\\]*?\S)\^/g, (_m, p: string, t: string) => p + tk.push(`<sup>${inner(t)}</sup>`));
+  out = out.replace(/(^|[^~\[$])~(?=\S)([^~\[\]$\n\\]*?\S)~(?![~])/g, (_m, p: string, t: string) => p + tk.push(`<sub>${inner(t)}</sub>`));
   out = out.replace(/\*(?=\S)([^*\n]*?\S)\*/g, (_m, t: string) => tk.push(`<em>${inner(t)}</em>`));
   out = out.replace(/(^|[^\w])_(?=\S)([^_\n]*?\S)_(?!\w)/g, (_m, p: string, t: string) => p + tk.push(`<em>${inner(t)}</em>`));
   return out;
@@ -1075,10 +1086,13 @@ export function markdownToHtml(md: string, title: string, opts: MarkdownToHtmlOp
          padding: .1em .3em; border-radius: 4px; font-size: .9em; }
   pre { background: #fdf3f7; border: 1px solid #ecd6de; border-radius: 10px; padding: .9em 1em; overflow: auto; }
   pre code { background: none; padding: 0; }
-  blockquote { margin: .6em 0; padding: .2em 1em; border-left: 3px solid #a8466f; background: #fbeef3;
-               border-radius: 0 8px 8px 0; color: #7a6871; }
-  blockquote p:last-child { margin-bottom: .3em; }
-  hr { border: none; border-top: 1px solid #ecd6de; margin: 1.5em 0; }
+    blockquote { margin: .6em 0; padding: .2em 1em; border-left: 3px solid #a8466f; background: #fbeef3;
+                 border-radius: 0 8px 8px 0; color: #7a6871; }
+    blockquote p:last-child { margin-bottom: .3em; }
+    /* 高亮 / 上标 / 下标：导出到 HTML、EPUB 与打印时都保持可见 */
+    mark { background: rgba(172, 63, 112, .18); color: inherit; }
+    sup, sub { font-size: .76em; line-height: 0; }
+    hr { border: none; border-top: 1px solid #ecd6de; margin: 1.5em 0; }
   img { max-width: 100%; border-radius: 8px; }
   li.task { list-style: none; }
   li > p { margin: 0 0 .4em; }

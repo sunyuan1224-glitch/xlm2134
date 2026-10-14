@@ -294,6 +294,27 @@ async function run() {
 
   /* ---------------- 块级格式 ---------------- */
 
+  await ck("Ctrl+Shift+H → 高亮", () => {
+    resetDoc(DOC, posOf("正文一。"));
+    select("正文一。");
+    press("Ctrl+Shift+H");
+    expectDoc("==正文一。==", "Ctrl+Shift+H 没有把选区变成高亮");
+  });
+
+  await ck("Ctrl+Shift+↑ → 上标", () => {
+    resetDoc(DOC, posOf("正文一。"));
+    select("正文一。");
+    press("Ctrl+Shift+↑");
+    expectDoc("^正文一。^", "Ctrl+Shift+↑ 没有把选区变成上标");
+  });
+
+  await ck("Ctrl+Shift+↓ → 下标", () => {
+    resetDoc(DOC, posOf("正文一。"));
+    select("正文一。");
+    press("Ctrl+Shift+↓");
+    expectDoc("~正文一。~", "Ctrl+Shift+↓ 没有把选区变成下标");
+  });
+
   /* ---------------- 标题等级（Ctrl+1..6 / Ctrl+0） ---------------- */
 
   await ck("Ctrl+1..6 → 把光标所在段落设成对应级别的标题", () => {
@@ -668,6 +689,9 @@ const COVERED = [
     "Ctrl+I",
     "Ctrl+U",
     "Alt+Shift+5",
+    "Ctrl+Shift+H",
+    "Ctrl+Shift+↑",
+    "Ctrl+Shift+↓",
     "Ctrl+1",
     "Ctrl+2",
     "Ctrl+3",

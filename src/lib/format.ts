@@ -12,7 +12,7 @@
 import type { EditorView } from "@codemirror/view";
 
 export type FormatCmd =
-  | { k: "inline"; style: "bold" | "italic" | "underline" | "strike" }
+  | { k: "inline"; style: "bold" | "italic" | "underline" | "strike" | "highlight" | "sup" | "sub" }
   | { k: "quote" }
   | { k: "list"; kind: "ul" | "ol" }
   | { k: "heading"; level: 0 | 1 | 2 | 3 | 4 | 5 | 6 }
@@ -40,6 +40,9 @@ const INLINE_MARK: Record<
   italic: { open: "*", close: "*" },
   underline: { open: "<u>", close: "</u>" },
   strike: { open: "~~", close: "~~" },
+  highlight: { open: "==", close: "==" },
+  sup: { open: "^", close: "^" },
+  sub: { open: "~", close: "~" },
 };
 
 const HEADING_RE = /^(#{1,6})\s+/;
@@ -194,6 +197,7 @@ function stripInline(line: string): string {
     .replace(/\*\*(.+?)\*\*/g, "$1")
     .replace(/(^|[^*])\*(?!\s)([^*]+?)\*/g, "$1$2")
     .replace(/~~(.+?)~~/g, "$1")
+    .replace(/(^|[^~])~(?=\S)([^~\n]*?\S)~(?![~])/g, "$1$2")
     .replace(/==(.+?)==/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
     .replace(/<\/?u>/g, "")

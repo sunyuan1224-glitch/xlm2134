@@ -224,4 +224,45 @@ title: 测试文档
   console.log('PASS: 安全转义与协议防御验证');
 }
 
+/* 8. 行内高亮 / 上标 / 下标（Typora 那套 ==高亮== ^上标^ ~下标~） */
+{
+  const inline = (md: string) => markdownToHtml(md, '', { standalone: false });
+
+  assert.ok(inline('这是 ==重点== 一句').includes('<mark>重点</mark>'), '==…== 需渲染成 <mark>');
+  assert.ok(inline('第 ^3^ 次').includes('<sup>3</sup>'), '^…^ 需渲染成 <sup>');
+  assert.ok(inline('H~2~O').includes('H<sub>2</sub>O'), '~…~ 需渲染成 <sub>');
+
+  // 三种标记不能互相打架：删除线仍是删除线，单个 ~ 才是下标
+  assert.ok(inline('~~没了~~').includes('<del>没了</del>'), '~~…~~ 仍是删除线，不能被下标规则抢走');
+  assert.ok(inline('删除线 ~~没了~~ 与 下标 ~x~').includes('<sub>x</sub>'), '删除线与下标必须能同时出现在一行');
+
+  // 不紧贴文字的符号不该被误吃（写小说时"a == b"这类比较很常见）
+  assert.ok(inline('a == b').includes('a == b'), '两侧带空格的 == 不是高亮');
+  assert.ok(!inline('a ^ b').includes('<sup>'), '两侧带空格的 ^ 不是上标');
+
+  // 行内标记可以互相当内容
+  assert.ok(inline('==高亮里的 **粗体**==').includes('<mark>高亮里的 <strong>粗体</strong></mark>'), '高亮内部可以再嵌加粗');
+
+  // 独立导出文档（HTML / EPUB 共用这条管线）必须自带高亮与上下标样式
+  const standalone = markdownToHtml('==高== ^上^ ~下~', '导出', { standalone: true });
+  assert.ok(/mark\s*\{/.test(standalone), 'standalone 文档需带 mark 样式');
+  assert.ok(/sup,\s*sub\s*\{/.test(standalone), 'standalone 文档需带 sup/sub 样式');
+
+  /*
+   * 回归：这两类文本同样含 ^ ~ ==，绝不能被行内标记规则跨着吃掉。
+   * 之前就是这里翻过车——`公式 $E = mc^2$ 与脚注[^1]。` 一行里两个 ^，
+   * 被当成一对上标标记，公式源码和脚注编号一起被改写。
+   */
+  const mixed = inline('公式 $E = mc^2$ 与脚注[^1]。');
+  assert.ok(mixed.includes('E = mc^2'), '公式源码必须原样保留');
+  assert.ok(mixed.includes('[^1]'), '脚注引用必须原样保留');
+  assert.ok(!mixed.includes('<sup>'), '公式里的 ^ 不能被当成上标标记');
+
+  assert.ok(inline('两个脚注 [^1] 与 [^2] 相邻。').includes('[^1]') && inline('两个脚注 [^1] 与 [^2] 相邻。').includes('[^2]'), '同一行的多个脚注引用都要留住');
+  assert.ok(inline('$x^2$ 和 $y^2$ 都是平方').includes('$x^2$ 和 $y^2$'), '同一行两个公式里的 ^ 不能被配对');
+  assert.ok(inline('第 ^3^ 次').includes('<sup>3</sup>'), '前面是空格的正常上标写法不受影响');
+
+  console.log('PASS: 行内高亮 / 上标 / 下标解析与导出样式');
+}
+
 console.log('\nALL PASS: 所有 Markdown 引用语义、图片防加载、任务框定位与脚注索引导航测试通过！');
