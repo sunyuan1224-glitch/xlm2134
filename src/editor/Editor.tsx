@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, Prec, type Extension } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -15,6 +15,7 @@ import { GFM } from "@lezer/markdown";
 import { markdown } from "@codemirror/lang-markdown";
 import { isInCode, livePreview } from "./livePreview";
 import { installImeGuard, planExternalSync, type ImeGuard } from "./ime";
+import { listKeys } from "./listKeys";
 import { baseTheme, highlightStyle, sourceHighlightStyle } from "./extensions";
 import { syntaxHighlighting } from "@codemirror/language";
 import { api } from "../api";
@@ -121,6 +122,16 @@ export function Editor({
       baseTheme,
       EditorView.lineWrapping,
       mode.current.of(modeExtensions(sourceMode)),
+      /*
+       * 列表键位必须用 Prec.highest 单独提权。
+       *
+       * @codemirror/lang-markdown 内部是 `Prec.high(keymap.of(markdownKeymap))`，
+       * 而它的 Enter 会在空列表项上插一个空行、把 "- " 留着，和 Typora 的"退出列表"不一样。
+       * 同级的 Prec.high 压不过它（优先级相同时按注册顺序，markdown() 在更前面），
+       * 所以这里必须用 Prec.highest；listKeys 只在这三种情况下返回 true，其余按键照旧
+       * 交给它的 keymap 处理（续行、序号递增仍由它负责）。
+       */
+      Prec.highest(keymap.of(listKeys)),
       keymap.of([
         { key: "Mod-s", run: () => { cbs.current.onSave(); return true; } },
         ...defaultKeymap,

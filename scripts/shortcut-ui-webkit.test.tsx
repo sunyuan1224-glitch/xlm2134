@@ -360,6 +360,32 @@ async function run() {
     expectDoc("1. 正文一。", "Ctrl+Shift+[ 没有把段落变成有序列表");
   });
 
+  /* ---------------- 列表行为：对齐 Typora 的三处 ---------------- */
+
+  await ck("空列表项按 Enter → 摘掉标记、退出列表", () => {
+    resetDoc("- 甲\n- \n", 6); // 光标停在第二个空项的末尾
+    press("Enter");
+    assert(docText() === "- 甲\n\n", `空项上的 Enter 应退出列表并留一个空行，实际 ${JSON.stringify(docText())}`);
+  });
+
+  await ck("标记之后按 Backspace → 整段摘掉标记，不留空格", () => {
+    resetDoc("- 绿色\n", 2); // 光标紧跟 "- " 之后
+    press("Backspace");
+    assert(docText() === "绿色\n", `应干净地变回正文，实际 ${JSON.stringify(docText())}`);
+  });
+
+  await ck("Ctrl+[ → 缩进（同 Tab）", () => {
+    resetDoc("- 甲\n- 乙\n", 2);
+    press("Ctrl+[");
+    expectDoc("  - 甲", "Ctrl+[ 没有把列表项缩进一级");
+  });
+
+  await ck("Ctrl+] → 减少缩进（同 Shift+Tab）", () => {
+    resetDoc("- 甲\n  - 乙\n", 8); // 光标在第二项（嵌套项）上
+    press("Ctrl+]");
+    assert(docText() === "- 甲\n- 乙\n", `嵌套项应退回上一级，实际 ${JSON.stringify(docText())}`);
+  });
+
   await ck("Ctrl+Shift+D → 删除段落", () => {
     resetDoc(DOC, posOf("正文二。"));
     press("Ctrl+Shift+D");
@@ -702,8 +728,10 @@ const COVERED = [
     "Ctrl+K",
   "Ctrl+Shift+I",
   "Ctrl+Shift+Q",
-  "Ctrl+Shift+]",
-  "Ctrl+Shift+[",
+    "Ctrl+Shift+]",
+    "Ctrl+Shift+[",
+    "Ctrl+[",
+    "Ctrl+]",
   "Alt+↑",
   "Alt+↓",
   "Ctrl+Shift+D",

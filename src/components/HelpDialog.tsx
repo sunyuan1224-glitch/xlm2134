@@ -34,6 +34,7 @@ export const SHORTCUTS: [string, string][] = [
   ["Ctrl+Shift+I", "插入本地图片（复制进 assets/）"],
   ["Ctrl+Shift+Q", "引用"],
   ["Ctrl+Shift+] / Ctrl+Shift+[", "无序 / 有序列表"],
+  ["Ctrl+[ / Ctrl+]", "缩进 / 减少缩进（同 Tab / Shift+Tab）"],
   ["Alt+↑ / Alt+↓", "当前行上移 / 下移（按整段移动见「段落」菜单）"],
   ["Ctrl+Shift+D", "删除段落"],
   ["Ctrl+,", "字体与排版设置"],
