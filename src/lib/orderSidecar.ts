@@ -72,8 +72,13 @@ export async function loadVolumeRegistry(root: string, files?: string[]): Promis
   if (!root) return [];
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const book of bookScope(files)) {
+  const scope = bookScope(files);
+  // 老工作区（或刚搬来的书）只在根目录有这份文件：把每本书那份补出来，
+  // 否则「打开一下、什么都没改就把书搬走」会丢掉卷与章顺序。补写是幂等的。
+  let needBackfill = false;
+  for (const book of scope) {
     const parsed = await readRaw(root, book, VOLUMES_NAME);
+    if (parsed === null && book) needBackfill = true;
     const arr = Array.isArray(parsed) ? parsed : (parsed as { volumes?: unknown } | null)?.volumes;
     if (!Array.isArray(arr)) continue;
     for (const x of arr) {
@@ -84,9 +89,11 @@ export async function loadVolumeRegistry(root: string, files?: string[]): Promis
       }
     }
   }
+  if (needBackfill) void saveVolumeRegistry(root, out, files);
   return out;
 }
 
+// 上面读到「本书那份不存在」时，这里把合并结果补写回去（一次性，之后就是常规双写）
 export async function saveVolumeRegistry(root: string, dirs: string[], files?: string[]): Promise<void> {
   if (!root) return;
   for (const book of bookScope(files)) {
@@ -98,8 +105,13 @@ export async function saveVolumeRegistry(root: string, dirs: string[], files?: s
 export async function loadChapterOrder(root: string, files?: string[]): Promise<ChapterOrder> {
   if (!root) return {};
   const out: ChapterOrder = {};
-  for (const book of bookScope(files)) {
+  const scope = bookScope(files);
+  // 老工作区（或刚搬来的书）只在根目录有这份文件：把每本书那份补出来，
+  // 否则「打开一下、什么都没改就把书搬走」会丢掉卷与章顺序。补写是幂等的。
+  let needBackfill = false;
+  for (const book of scope) {
     const parsed = await readRaw(root, book, CHAPTER_ORDER_NAME);
+    if (parsed === null && book) needBackfill = true;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
     for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
       if (!Array.isArray(v)) continue;
@@ -108,9 +120,11 @@ export async function loadChapterOrder(root: string, files?: string[]): Promise<
       if (key && list.length && !out[key]) out[key] = list;
     }
   }
+  if (needBackfill) void saveChapterOrder(root, out, files);
   return out;
 }
 
+// 上面读到「本书那份不存在」时，这里把合并结果补写回去（一次性，之后就是常规双写）
 export async function saveChapterOrder(root: string, order: ChapterOrder, files?: string[]): Promise<void> {
   if (!root) return;
   for (const book of bookScope(files)) {
@@ -131,8 +145,13 @@ export async function loadFlipRegistry(root: string, files?: string[]): Promise<
   if (!root) return [];
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const book of bookScope(files)) {
+  const scope = bookScope(files);
+  // 老工作区（或刚搬来的书）只在根目录有这份文件：把每本书那份补出来，
+  // 否则「打开一下、什么都没改就把书搬走」会丢掉卷与章顺序。补写是幂等的。
+  let needBackfill = false;
+  for (const book of scope) {
     const parsed = await readRaw(root, book, ORDER_FLIP_NAME);
+    if (parsed === null && book) needBackfill = true;
     const arr = Array.isArray(parsed) ? parsed : (parsed as { books?: unknown } | null)?.books;
     if (!Array.isArray(arr)) continue;
     for (const x of arr) {
@@ -143,9 +162,11 @@ export async function loadFlipRegistry(root: string, files?: string[]): Promise<
       }
     }
   }
+  if (needBackfill) void saveFlipRegistry(root, out, files);
   return out;
 }
 
+// 上面读到「本书那份不存在」时，这里把合并结果补写回去（一次性，之后就是常规双写）
 export async function saveFlipRegistry(root: string, books: string[], files?: string[]): Promise<void> {
   if (!root) return;
   for (const book of bookScope(files)) {
