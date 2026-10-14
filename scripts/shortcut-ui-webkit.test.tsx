@@ -397,6 +397,27 @@ async function run() {
     );
   });
 
+  await ck("全书字数跟着当前章的改动即时更新", async () => {
+    const total = () => {
+      const item = [...document.querySelectorAll<HTMLElement>(".sb-item")]
+        .map((e) => e.textContent ?? "")
+        .find((t) => t.startsWith("全书"));
+      assert(item, "状态栏里应有「全书 N」");
+      return Number((item!.match(/([\d,]+)/) ?? [])[1]?.replace(/,/g, "") ?? -1);
+    };
+    const base = "正文一。\n\n正文二。\n\n正文三。\n";
+    resetDoc(base, 0);
+    await wait(400);
+    const before = total();
+    assert(before > 0, `全书字数应大于 0，实际 ${before}`);
+
+    resetDoc(base + "\n又添了一段新内容，用来验证全书字数会跟着涨。\n", 0);
+    await wait(400);
+    const after = total();
+    assert(after > before, `全书字数应随当前章即时增加（${before} → ${after}）`);
+    resetDoc(DOC, 0);
+  });
+
   await ck("正在编辑的那一行也能直接看出 ==高亮== / ^上标^ / ~下标~", async () => {
     resetDoc("==重点== 与 ^上^ 与 ~下~ 与普通。\n", 0);
     await wait(300);

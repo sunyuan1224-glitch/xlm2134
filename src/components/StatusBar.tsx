@@ -12,7 +12,17 @@ export function StatusBar({ cursor }: { cursor: { line: number; col: number; sel
   const [mode, setMode] = useState<CountMode>("cjk-word");
 
   const words = useDeferredCount(content, mode);
-  const total = chapters.reduce((a, c) => a + c.words, 0);
+  /*
+   * 全书字数 = 其他章已统计好的旧值 + **当前章的实时字数**。
+   *
+   * 当前章那部分直接复用上面为「本章」算出来的 words，不额外扫一遍文稿，所以
+   * 全书会跟着打字即时更新（滞后一帧，与本章同步），代价为零。
+   * 其他章没法实时（内容根本没加载进来），仍用打开 / 保存时记下的值。
+   */
+  const total = chapters.reduce(
+    (sum, c) => sum + (activePath && c.path === activePath ? words : c.words),
+    0,
+  );
 
   const cycle = () => {
     const order: CountMode[] = ["cjk-word", "char", "paragraph"];
