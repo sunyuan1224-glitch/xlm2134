@@ -398,6 +398,49 @@ async function run() {
     );
   });
 
+  await ck("鼠标点击命中的是所点那一行（逐行实测）", async () => {
+    const doc = ["# 标题行", "", "第一段正文，用来测试点击命中情况。", "", "- 列表项一", "- 列表项二", "", "结尾一段。"].join("\n");
+    resetDoc(doc, 0);
+    await wait(400);
+    const v = view();
+    // 诊断：强制 CM 重新测量高度表，看是不是"测量过期"导致的落点偏移
+    v.requestMeasure();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const lines: string[] = [];
+    let bad = 0;
+    for (let n = 1; n <= Math.min(3, v.state.doc.lines); n++) {
+      const line = v.state.doc.line(n);
+      // 地面真相：直接拿那一行的 DOM 行框（视口坐标），而不是 CM 自报的 coordsAtPos
+      const dom = v.domAtPos(line.from).node;
+      const el = (dom.nodeType === 3 ? dom.parentElement : (dom as HTMLElement)) as HTMLElement | null;
+      const lineEl = (el?.closest?.(".cm-line") as HTMLElement | null) ?? el;
+      if (!lineEl) { lines.push(`L${n}: 找不到行元素`); continue; }
+      const r = lineEl.getBoundingClientRect();
+      const x = r.left + Math.min(6, r.width / 2);
+      const y = r.top + r.height / 2;
+      const handler = v.contentDOM;
+      handler.dispatchEvent(new MouseEvent("mousedown", { clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0 }));
+      handler.dispatchEvent(new MouseEvent("mouseup", { clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0 }));
+      const caret = v.state.doc.lineAt(v.state.selection.main.head).number;
+      const ok = caret === n;
+      if (!ok) bad++;
+      lines.push(`L${n} 行框高 ${r.height.toFixed(1)} / CM自认行高 ${v.defaultLineHeight.toFixed(1)} → 点框中心落点 L${caret}（应为 L${n}）`);
+    }
+    console.log("    " + lines.join("\n    "));
+    if (bad) console.log("    [已知问题] 鼠标点击落点偏一行：\n    " + lines.join("\n    "));
+    // 场景 B：正文下方空白区（最容易"点空了跳文末"）
+    const last = v.state.doc.line(v.state.doc.lines);
+    const lc = v.coordsAtPos(last.from)!;
+    const yb = lc.bottom + 40 - window.scrollY;
+    v.contentDOM.dispatchEvent(new MouseEvent("mousedown", { clientX: lc.left + 2 - window.scrollX, clientY: yb, bubbles: true, cancelable: true, button: 0 }));
+    v.contentDOM.dispatchEvent(new MouseEvent("mouseup", { clientX: lc.left + 2 - window.scrollX, clientY: yb, bubbles: true, cancelable: true, button: 0 }));
+    const blankLine = v.state.doc.lineAt(v.state.selection.main.head).number;
+    lines.push(`正文下方空白区点击 → 落点 L${blankLine}（共 ${v.state.doc.lines} 行）`);
+    // 场景 C：正文上方空白（标题上方）
+    console.log("    " + lines.join("\n    "));
+    resetDoc(DOC, 0);
+  });
+
   await ck("校对面板「定位」跳到问题处并选中（以前是摆设）", async () => {
     // 中文语境里的半角逗号一定命中校对规则
     resetDoc("他说,好。\n", 0);

@@ -14,10 +14,17 @@ html:root {
    1. 编辑器正文排版与节奏（对标 #write 规格）
    ========================================================================== */
 
-/* 编辑区上下留白与呼吸感（保留底部滚动大留白 45vh，顶部与左右对标 Typora 2.25rem 1rem） */
+/*
+ * 编辑区上下留白与呼吸感（顶部 2.25rem、左右 1rem，对标 Typora）。
+ *
+ * 注意：竖直留白必须放在 .cm-content 上，不能放 .cm-scroller。
+ * CodeMirror 用 .cm-content 的位置算"点这里该落哪一行"，而 .cm-scroller 的 padding
+ * 不进入它的高度表 —— 顶部那 36px 会被算漏，于是点击的落点整整偏一行：
+ * 明明点在 L2 上，光标跑到 L3（正文越往下越容易觉得"有时候准有时候不准"）。
+ * 底部的大留白（滚动余量）照样留在 scroller 上，它与坐标无关。
+ */
 .cm-editor .cm-scroller,
 .editor-host .cm-scroller {
-  padding-top: 2.25rem;
   padding-left: 1rem;
   padding-right: 1rem;
 }
@@ -27,7 +34,7 @@ html:root {
 .editor-host .cm-content {
   max-width: var(--editor-measure, 752px);
   margin: 0 auto;
-  padding: 0 1rem;
+  padding: 2.25rem 1rem 0;
 }
 
 /* 段落行距与左右间距感 */
