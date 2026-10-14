@@ -55,6 +55,50 @@ async function run() {
   }
   await wait();
 
+  /*
+   * 回归：菜单之间切换必须「瞬时」——不许有过渡/动画，且一帧之内就到位。
+   *
+   * 这条盯的是曾经的 sliding 设计：面板用 transform 过渡滑到下一个菜单下面，配着
+   * MenuBar 里的双 requestAnimationFrame 状态机。光标快速扫过菜单栏时动画刚起步就被
+   * 打断，看起来卡顿；而且每帧都要重新合成一次带阴影的面板。现在要求：内容立刻换、
+   * 位置一帧到位、面板和菜单栏按钮的 computed 过渡时长都是 0s。
+   */
+  {
+    const roots = [...document.querySelectorAll<HTMLButtonElement>(".menu-root")];
+    assert(roots.length >= 2, `菜单栏至少该有两个菜单，实际 ${roots.length}`);
+    roots[0].click();
+    await wait();
+    const pop = document.querySelector<HTMLElement>(".menu-pop");
+    assert(pop, "点开第一个菜单后应该有面板");
+    const panelTransition = getComputedStyle(pop!).transitionDuration;
+    assert(panelTransition === "0s", `菜单面板不该有过渡，实际 transition-duration: ${panelTransition}`);
+    const panelAnimation = getComputedStyle(pop!).animationName;
+    assert(panelAnimation === "none", `菜单面板不该有动画，实际 animation-name: ${panelAnimation}`);
+    const rootTransition = getComputedStyle(roots[0]).transitionDuration;
+    assert(rootTransition === "0s", `菜单栏按钮不该有过渡，实际 transition-duration: ${rootTransition}`);
+
+    const before = pop!.getBoundingClientRect();
+    const firstContent = pop!.textContent;
+    // React 的 onMouseEnter 建在 mouseout/mouseover 上，所以这里按浏览器的真实顺序发一对：
+    // 先从第一个菜单 out 到第二个（relatedTarget 指明去处），再 over 第二个（指明来处）。
+    roots[0].dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: roots[1] }));
+    roots[1].dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: roots[0] }));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null))); // 只给一帧
+    const after = pop!.getBoundingClientRect();
+    assert(pop!.textContent !== firstContent, "悬停到第二个菜单时面板内容应立刻切换");
+    const wantLeft = document.querySelectorAll<HTMLButtonElement>(".menu-root")[1].getBoundingClientRect().left;
+    assert(
+      Math.abs(after.left - wantLeft) <= 2,
+      `面板应在一帧内落到第二个菜单正下方（期望约 ${Math.round(wantLeft)}，实际 ${Math.round(after.left)}）`,
+    );
+    assert(after.left !== before.left, "面板位置确实变了（否则这条用例没验到切换）");
+
+    // 再点一次同一个菜单 → 收起
+    roots[1].click();
+    await wait(60);
+    assert(!document.querySelector(".menu-pop"), "再次点击同一个菜单应把面板收起");
+  }
+
   send("SHOT: default");
   await wait();
   const viewMenu = [...document.querySelectorAll<HTMLButtonElement>(".menu-root")].find((b) => b.textContent?.trim() === "视图")!;

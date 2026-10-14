@@ -54,15 +54,11 @@ function menuSig(menu: MenuDef | undefined): string {
 
 export function MenuBar({ menus, right }: Props) {
   const [open, setOpen] = useState<number | null>(null);
-  // 第一次展开才淡入；已经开着时在菜单之间移动，面板保持挂载，只改位置和尺寸。
-  const [moving, setMoving] = useState(false);
   const [frame, setFrame] = useState<PopFrame | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const openRef = useRef<number | null>(null);
-  const placedRef = useRef<number | null>(null);
-  const moveGen = useRef(0);
   const sig = menuSig(open === null ? undefined : menus[open]);
 
   function closeMenu() {
@@ -93,20 +89,14 @@ export function MenuBar({ menus, right }: Props) {
     const btn = bar?.querySelectorAll<HTMLButtonElement>(".menu-root")[index];
     if (!bar || !pop || !inner || !btn) return null;
 
-    // 外层可能还停在上一个菜单的宽高上。先去掉过渡再放开尺寸，否则会量到正在插值的旧高度。
-    const prev = {
-      width: pop.style.width,
-      height: pop.style.height,
-      transition: pop.style.transition,
-    };
-    pop.style.transition = "none";
+    // 外层可能还停在上一个菜单的宽高上：先临时放开尺寸，量到内容真实大小再还原。
+    const prev = { width: pop.style.width, height: pop.style.height };
     pop.style.width = "max-content";
     pop.style.height = "max-content";
     const w = inner.offsetWidth;
     const h = inner.offsetHeight;
     pop.style.width = prev.width;
     pop.style.height = prev.height;
-    pop.style.transition = prev.transition;
 
     const barRect = bar.getBoundingClientRect();
     const btnRect = btn.getBoundingClientRect();
@@ -120,44 +110,22 @@ export function MenuBar({ menus, right }: Props) {
     setFrame((cur) => (cur && cur.x === next.x && cur.w === next.w && cur.h === next.h ? cur : next));
   }
 
+  /*
+   * 菜单开合与「在菜单之间切换」都只做一件事：量一次、把位置和尺寸写下去。
+   *
+   * 这里原先有一套 requestAnimationFrame 双帧 + 过渡状态机，专门为了让面板在菜单
+   * 之间"滑过去"。代价是：光标扫过菜单栏时动画刚起步就被下一次切换打断，看起来卡；
+   * 而且每帧都要重新合成一次带阴影的面板。现在改成瞬时跳转，一套状态机、一个 ref
+   * 生成号、一次 rAF 全都不需要了。
+   */
   useLayoutEffect(() => {
     if (open === null) {
-      moveGen.current += 1;
-      placedRef.current = null;
-      setMoving(false);
       setFrame(null);
       return;
     }
     const next = measure(open);
     if (!next) return;
-
-    const placed = placedRef.current;
-    placedRef.current = open;
-    moveGen.current += 1;
-    const gen = moveGen.current;
-
-    // 刚点开，或还是同一个菜单（勾选状态变了）：直接改尺寸，不滑动。
-    if (placed === null || placed === open) {
-      putFrame(next);
-      return;
-    }
-    // 已经在菜单之间滑了：马上改目标。光标连着划过时，后一次覆盖前一次。
-    if (moving) {
-      putFrame(next);
-      return;
-    }
-    // 第一次离开刚打开的那个标签：先挂上过渡，等这一帧画出来，再改位置。
-    // 同一帧里又改位置的话，浏览器不会启动过渡。
-    setMoving(true);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (moveGen.current !== gen || openRef.current === null) return;
-        const measured = measure(openRef.current);
-        if (measured) putFrame(measured);
-      });
-    });
-    // moving 只参与本次判断。写进依赖会在挂上过渡时再跑一遍，把滑动掐断。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    putFrame(next);
   }, [open, sig]);
 
   const current = open === null ? null : menus[open];
@@ -191,7 +159,7 @@ export function MenuBar({ menus, right }: Props) {
       {current && (
         <div
           ref={popRef}
-          className={"menu-pop" + (moving ? " moving" : " opening")}
+          className="menu-pop"
           style={
             frame
               ? {

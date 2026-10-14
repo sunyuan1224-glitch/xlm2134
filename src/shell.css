@@ -35,7 +35,6 @@
   padding: 4px 9px;
   border-radius: var(--r-sm);
   font-size: 13px;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
 .menu-root:hover,
@@ -53,15 +52,12 @@
   box-shadow: 0 10px 28px rgba(59, 50, 55, 0.16), var(--glow);
 }
 
-/* 淡入放在内层。外层的 transform 专门负责左右位置，两套才不会抢同一个属性。 */
-.menu-pop.opening .menu-pop-clip {
-  animation: menuFade 0.14s var(--ease);
-}
-
-/* 只过渡 transform。left / width / height 会让 WebKit 每帧重排，打包后的桌面版会卡。 */
-.menu-pop.moving {
-  transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
-}
+/*
+ * 这里**故意没有动画**：菜单面板不做淡入，也不做菜单之间切换时的滑动。
+ * 理由：光标扫过菜单栏时，动画每隔几毫秒就要被下一次位置变更打断重来，
+ * 在 WebKit 里表现为明显的顿挫（打包成 AppImage 后更明显），而它带来的观感
+ * 收益几乎为零。改成瞬时跳转后，切换只改一次 transform，不再有每帧的合成开销。
+ */
 
 .menu-pop-clip {
   height: 100%;
@@ -80,17 +76,6 @@
   padding: 6px 4px;
 }
 
-@keyframes menuFade {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .menu-item {
   display: flex;
   align-items: center;
@@ -103,7 +88,6 @@
   border-radius: var(--r-sm);
   text-align: left;
   cursor: pointer;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
 .menu-item:hover:not(:disabled) {
