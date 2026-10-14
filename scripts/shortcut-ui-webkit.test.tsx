@@ -294,6 +294,33 @@ async function run() {
 
   /* ---------------- 块级格式 ---------------- */
 
+  /* ---------------- 标题等级（Ctrl+1..6 / Ctrl+0） ---------------- */
+
+  await ck("Ctrl+1..6 → 把光标所在段落设成对应级别的标题", () => {
+    for (const n of [1, 2, 3, 4, 5, 6]) {
+      resetDoc(DOC, posOf("正文一。"));
+      press(`Ctrl+${n}`);
+      expectDoc(`${"#".repeat(n)} 正文一。`, `Ctrl+${n} 没有把段落设成 ${n} 级标题`);
+    }
+  });
+
+  await ck("Ctrl+1 再按一次 → 取消标题（同级即开关）", () => {
+    resetDoc(DOC, posOf("正文一。"));
+    press("Ctrl+1");
+    expectDoc("# 正文一。", "第一次 Ctrl+1 应把段落设成一级标题");
+    press("Ctrl+1");
+    assert(!docText().includes("# 正文一。"), `第二次 Ctrl+1 应取消标题，实际 ${JSON.stringify(docText())}`);
+  });
+
+  await ck("Ctrl+0 → 变回正文", () => {
+    resetDoc(DOC, posOf("正文一。"));
+    press("Ctrl+3");
+    expectDoc("### 正文一。", "Ctrl+3 应先设成三级标题");
+    press("Ctrl+0");
+    const text = docText();
+    assert(text.includes("正文一。") && !text.includes("# 正文一。"), `Ctrl+0 应去掉标题标记，实际 ${JSON.stringify(text)}`);
+  });
+
   await ck("Ctrl+Shift+Q → 引用", () => {
     resetDoc(DOC, posOf("正文一。"));
     press("Ctrl+Shift+Q");
@@ -637,11 +664,18 @@ const COVERED = [
   "F11",
   "Ctrl+Shift+L",
   "Ctrl+Shift+B",
-  "Ctrl+B",
-  "Ctrl+I",
-  "Ctrl+U",
-  "Alt+Shift+5",
-  "Ctrl+K",
+    "Ctrl+B",
+    "Ctrl+I",
+    "Ctrl+U",
+    "Alt+Shift+5",
+    "Ctrl+1",
+    "Ctrl+2",
+    "Ctrl+3",
+    "Ctrl+4",
+    "Ctrl+5",
+    "Ctrl+6",
+    "Ctrl+0",
+    "Ctrl+K",
   "Ctrl+Shift+I",
   "Ctrl+Shift+Q",
   "Ctrl+Shift+]",

@@ -15,6 +15,7 @@ export type FormatCmd =
   | { k: "inline"; style: "bold" | "italic" | "underline" | "strike" }
   | { k: "quote" }
   | { k: "list"; kind: "ul" | "ol" }
+  | { k: "heading"; level: 0 | 1 | 2 | 3 | 4 | 5 | 6 }
   | { k: "hr" }
   | { k: "link" }
   | { k: "image" }
@@ -79,6 +80,76 @@ function blockBoundsAt(text: string, pos: number): { from: number; to: number } 
 function mapLines(text: string, from: number, to: number, fn: (line: string) => string): string {
   const seg = text.slice(from, to);
   return text.slice(0, from) + seg.split("\n").map(fn).join("\n") + text.slice(to);
+}
+
+/**
+ * 行首的块级标记。设标题前先摘掉这些，避免出现 `# - 内容` 这种混血行。
+ * 任务框要排在无序列表前面：`- [ ] x` 得先被 TASK_RE 整条吃掉，
+ * 否则 UL_RE 只摘掉 `- `，会剩一个孤零零的 `[ ]`。
+ */
+const BLOCK_PREFIX_RES = [HEADING_RE, TASK_RE, QUOTE_RE, UL_RE, OL_RE];
+
+function stripBlockPrefix(line: string): string {
+  let l = line;
+  for (const re of BLOCK_PREFIX_RES) l = l.replace(re, "");
+  return l;
+}
+
+/**
+ * 设置标题级别（level 0 = 普通段落）。手感对齐 Typora：
+ *  - 光标在正文里 → 作用于整个段落（连续的若干非空行）；
+ *  - 有选区 → 作用于选区覆盖到的所有行；
+ *  - **同一级别再按一次 = 取消标题**（所以 Ctrl+1 兼作开关），Ctrl+0 是显式取消。
+ */
+function setHeading(text: string, sel: { from: number; to: number }, level: 0 | 1 | 2 | 3 | 4 | 5 | 6): FormatResult {
+  const b =
+    sel.to > sel.from
+      ? { from: lineBoundsAt(text, sel.from).from, to: lineBoundsAt(text, sel.to).to }
+      : blockBoundsAt(text, sel.from);
+  const lines = text.slice(b.from, b.to).split("\n");
+
+  const levelOf = (l: string): number => {
+    const m = l.match(HEADING_RE);
+    return m ? m[1].length : 0;
+  };
+  const nonEmpty = lines.filter((l) => l.trim() !== "");
+  // 块内每行都已经是指定级别 → 再按一次变回正文
+  const sameLevel = level > 0 && nonEmpty.length > 0 && nonEmpty.every((l) => levelOf(l) === level);
+  const target = sameLevel ? 0 : level;
+
+  // 逐行改行首，同时记下「这一行行首长度变了多少」，用于把光标平移到正确位置
+  const shifts: { start: number; len: number; delta: number }[] = [];
+  let cursor = b.from; // 当前行的绝对起点
+  const out = lines.map((l) => {
+    const start = cursor - b.from;
+    cursor += l.length + 1; // +1 是换行符
+    if (l.trim() === "") {
+      shifts.push({ start, len: 0, delta: 0 });
+      return l;
+    }
+    const bare = stripBlockPrefix(l);
+    const used = l.length - bare.length;
+    const prefix = target === 0 ? "" : "#".repeat(target) + " ";
+    shifts.push({ start, len: bare.length, delta: prefix.length - used });
+    return prefix + bare;
+  });
+  const body = out.join("\n");
+
+  // 有选区 → 整块选中；只是光标 → 按行首变化量平移（并夹在块内）
+  let from = b.from;
+  let to = b.from + body.length;
+  if (sel.to === sel.from) {
+    const rel = sel.from - b.from;
+    let acc = 0;
+    for (const s of shifts) {
+      acc += s.delta;
+      if (rel <= s.start + s.len) break;
+    }
+    const moved = Math.max(b.from, Math.min(b.from + rel + acc, b.from + body.length));
+    from = moved;
+    to = moved;
+  }
+  return { text: text.slice(0, b.from) + body + text.slice(b.to), from, to };
 }
 
 /** 把选区（可能跨行）整体加/去行首标记；全部行都有标记时视为取消 */
@@ -174,6 +245,8 @@ export function applyFormatToText(text: string, from: number, to: number, cmd: F
         cmd.kind === "ul" ? (l) => "- " + l : (() => { let i = 0; return (l: string) => `${++i}. ` + l; })(),
         cmd.kind === "ul" ? UL_RE : OL_RE,
       );
+    case "heading":
+      return setHeading(text, sel, cmd.level);
     case "hr": {
       const line = lineBoundsAt(text, sel.from);
       const insert = (line.from === 0 ? "" : "\n") + "---\n";

@@ -96,4 +96,47 @@ const sel = (text: string, from: number, to: number, cmd: Parameters<typeof appl
   assert.equal(run("> 引用 ~~删~~", 0, { k: "clearFormat" }), "引用 删", "去掉引用与删除线标记");
 }
 
+/* ------------------------------------------------------------------ *
+ * 6. 标题等级（Ctrl+1..6 / Ctrl+0）：设置、同级取消、跨行、摘掉旧标记
+ * ------------------------------------------------------------------ */
+{
+  const doc = "# 第一章\n\n正文一。\n\n- 列表项\n";
+
+  // 光标所在段落升为标题；段落外（前后空行、别的段落）一律不动
+  assert.equal(
+    run(doc, at(doc, "正文一。"), { k: "heading", level: 1 }),
+    "# 第一章\n\n# 正文一。\n\n- 列表项\n",
+    "光标所在段落升为一级标题",
+  );
+
+  // 同级再按一次 = 取消标题（Ctrl+1 因而兼作开关）
+  assert.equal(run("# 正文一。", 0, { k: "heading", level: 1 }), "正文一。", "同级再按一次取消标题");
+
+  // 换级别就是直接改（不是叠加）
+  assert.equal(run("## 正文一。", 0, { k: "heading", level: 4 }), "#### 正文一。", "二级标题改成四级");
+  assert.equal(run("#### 正文一。", 0, { k: "heading", level: 2 }), "## 正文一。", "四级标题改成二级");
+
+  // Ctrl+0：显式变回正文；对本来就是正文的段落不变
+  assert.equal(run("###### 正文一。", 0, { k: "heading", level: 0 }), "正文一。", "Ctrl+0 变回正文");
+  assert.equal(run("正文一。", 0, { k: "heading", level: 0 }), "正文一。", "普通段落按 Ctrl+0 无变化");
+
+  // 列表 / 引用行升为标题时，原标记要摘掉，不留 `# - 内容` 这种混血行
+  assert.equal(run("- 列表项", 0, { k: "heading", level: 2 }), "## 列表项", "列表项升标题时摘掉列表标记");
+  assert.equal(run("> 引用", 0, { k: "heading", level: 3 }), "### 引用", "引用升标题时摘掉引用标记");
+  assert.equal(run("- [ ] 待办", 0, { k: "heading", level: 1 }), "# 待办", "任务框升标题时整条摘掉，不剩 [ ]");
+
+  // 选区覆盖多行 → 整块都设成同一级
+  const two = "甲。\n乙。\n";
+  assert.equal(sel(two, 0, two.length - 1, { k: "heading", level: 2 }), "## 甲。\n## 乙。\n", "选区覆盖的两行一起设标题");
+
+  // 连续非空行算一个段落（Markdown 的软换行），整段一起升
+  const soft = "甲。\n乙。";
+  assert.equal(run(soft, at(soft, "甲。"), { k: "heading", level: 1 }), "# 甲。\n# 乙。", "软换行的整段一起升为标题");
+
+  // 光标位置：设置后仍落在同一行里（不会跑到文首/文末）
+  const r = applyFormatToText("正文一。\n\n正文二。", 6, 6, { k: "heading", level: 1 });
+  assert.equal(r.text, "正文一。\n\n# 正文二。", "只改光标所在段");
+  assert.equal(r.text.slice(0, r.from).split("\n").length, 3, "光标仍停在第 3 行（原标题行）");
+}
+
 console.log("=== 所有 富文本 命令测试通过 ===");
