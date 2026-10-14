@@ -4,6 +4,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 
 export const isDesktop = (): boolean => isTauri();
 
+
 export interface FileNode {
   path: string;
   name: string;
@@ -38,6 +39,8 @@ export interface SplitResult {
 
 export const api = {
   pickDirectory: () => invoke<string | null>("pick_directory"),
+  /** 本机已安装的字体族（设置面板的字体下拉用）；取不到时后端返回空表 */
+  listFonts: (): Promise<string[]> => invoke<string[]>("list_fonts"),
   scan: (root: string) => invoke<Workspace>("scan_workspace", { root }),
   readFile: (root: string, path: string) => invoke<FileContent | null>("read_file", { root, path }),
   writeFile: (root: string, path: string, content: string) =>

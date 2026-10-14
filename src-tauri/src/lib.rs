@@ -1,4 +1,5 @@
 mod vault;
+mod fonts;
 
 use std::path::Path;
 use tauri::Manager;
@@ -188,11 +189,11 @@ fn copy_asset(root: String, src_abs: String, dest_rel: String) -> Result<String,
     copy_asset_impl(Path::new(&root), &src_abs, &dest_rel)
 }
 
-/// 把 base64 编码的二进制数据写入绝对路径（「另存为」DOCX / EPUB 导出用），父目录不存在时自动创建。
-#[tauri::command]
-fn write_binary_abs(path: String, data_base64: String) -> Result<(), String> {
-    write_binary_abs_impl(&path, &data_base64)
-}
+  /// 把 base64 编码的二进制数据写入绝对路径（「另存为」DOCX / EPUB 导出用），父目录不存在时自动创建。
+  #[tauri::command]
+  fn write_binary_abs(path: String, data_base64: String) -> Result<(), String> {
+      write_binary_abs_impl(&path, &data_base64)
+  }
 
 pub fn run() {
     tauri::Builder::default()
@@ -213,9 +214,10 @@ pub fn run() {
             split_at_cursor,
             app_config_dir,
             read_image_data_url,
-            copy_asset,
-            write_binary_abs,
-        ])
+              copy_asset,
+              write_binary_abs,
+              fonts::list_fonts,
+          ])
         .run(tauri::generate_context!())
         .expect("启动失败");
 }

@@ -13,8 +13,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { ModalStage } from "./ModalStage";
+import { FontPicker } from "./FontPicker";
 import {
-  FONT_PRESETS,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   LINE_HEIGHT_MAX,
@@ -38,9 +38,6 @@ function formatLine(value: number): string {
 
 export function SettingsDialog({ onClose }: { onClose: () => void }): JSX.Element {
   const typography = useTypography();
-  const isPreset = (stack: string) => FONT_PRESETS.some((p) => p.stack === stack);
-  // 自定义字体输入框：当前值不是任何预设 stack 时把它回显出来
-  const [custom, setCustom] = useState(() => (isPreset(typography.fontFamily) ? "" : typography.fontFamily));
   // 数字输入框允许中间态（清空、只敲了一半），失焦时丢掉草稿回到真实值
   const [sizeDraft, setSizeDraft] = useState<string | null>(null);
   const [lineDraft, setLineDraft] = useState<string | null>(null);
@@ -89,16 +86,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): JSX.Elemen
     }
   };
 
-  const pickPreset = (stack: string) => {
-    setCustom("");
-    setTypography({ fontFamily: stack });
-  };
-
-  const onCustom = (value: string) => {
-    setCustom(value);
-    // 即时生效；清空表示回退 styles.css 的默认字体栈
-    setTypography({ fontFamily: value });
-  };
+  /** 字体下拉：预设写整条字体栈，具体字体已由 FontPicker 拼成带引号的族名 */
+  const onFont = (family: string) => setTypography({ fontFamily: family });
 
   const onSize = (value: string) => {
     setSizeDraft(value);
@@ -114,7 +103,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): JSX.Elemen
 
   const onReset = () => {
     resetTypography();
-    setCustom("");
     setSizeDraft(null);
     setLineDraft(null);
   };
@@ -149,31 +137,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): JSX.Elemen
 
         <div className="field">
           <span>字体</span>
-          <div className="set-presets" role="group" aria-label="字体预设">
-            {FONT_PRESETS.map((p) => (
-              <button
-                key={p.key}
-                type="button"
-                className={"btn " + (typography.fontFamily === p.stack ? "accent" : "")}
-                aria-pressed={typography.fontFamily === p.stack}
-                style={{ fontFamily: p.stack }}
-                onClick={() => pickPreset(p.stack)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <input
-            className="panel-input"
-            value={custom}
-            spellCheck={false}
-            placeholder="自定义字体名称，例如：霞鹜文楷、思源黑体（需本机已安装）"
-            aria-label="自定义字体名称"
-            onChange={(e) => onCustom(e.target.value)}
-          />
-          <p className="set-meta" style={{ marginTop: 4 }}>
-            提示：自定义字体需本机已安装对应字体；留空则使用主题默认。
-          </p>
+          <FontPicker value={typography.fontFamily} onChange={onFont} />
         </div>
 
         <div className="field">
@@ -181,19 +145,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): JSX.Elemen
             字号<b className="set-value">{typography.fontSize} px</b>
           </span>
           <div className="set-row">
-            <input
-              className="set-range"
-              type="range"
-              min={FONT_SIZE_MIN}
-              max={FONT_SIZE_MAX}
-              step={1}
-              value={typography.fontSize}
-              aria-label="字号（像素）"
-              onChange={(e) => {
-                setSizeDraft(null);
-                setTypography({ fontSize: Number(e.target.value) });
-              }}
-            />
             <button
               type="button"
               className="btn btn-xs set-step"

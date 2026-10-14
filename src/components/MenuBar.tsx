@@ -13,13 +13,15 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 export type MenuEntry =
   | "separator"
   | { title: string }
-  | {
-      label: string;
-      shortcut?: string;
-      checked?: boolean;
-      disabled?: boolean;
-      onClick?: () => void;
-    };
+    | {
+        label: string;
+        shortcut?: string;
+        checked?: boolean;
+        disabled?: boolean;
+        /** 点完不关菜单：给「放大/缩小字号」这类要连点的项用 */
+        keepOpen?: boolean;
+        onClick?: () => void;
+      };
 
 export interface MenuDef {
   label: string;
@@ -181,7 +183,7 @@ export function MenuBar({ menus, right }: Props) {
                     className={"menu-item " + (item.disabled ? "disabled" : "") + (item.checked ? " on" : "")}
                     disabled={item.disabled}
                     onClick={() => {
-                      closeMenu();
+                      if (!item.keepOpen) closeMenu();
                       item.onClick?.();
                     }}
                   >

@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "../src/App";
 import { useStore } from "../src/store";
+import { api } from "../src/api";
 import "../src/main";
 
 const send = (text: string) => (window as any).webkit.messageHandlers.result.postMessage(text);
@@ -26,6 +27,8 @@ async function run() {
     contents: { "第一章.md": "# 春日来信\n\n窗外的花开了。她推开窗，让清晨的风轻轻穿过书页。\n\n**新的章节**，从这里开始。\n\n```ts\nconst message = 'hello';\n```\n" },
   });
   createRoot(document.getElementById("root")!).render(<App />);
+  // 字体下拉的数据源：测试里给三款假字体（真实环境由 Tauri 命令 fc-list 提供）
+  (api as unknown as Record<string, unknown>).listFonts = async () => ["思源黑体 CN", "Noto Sans", "霞鹜文楷"];
   await wait();
   assert(getComputedStyle(document.documentElement).getPropertyValue("--bg-panel").trim() === "#fbeef3", "Pink-white stylesheet must be loaded");
   assert(!document.querySelector(".pane-right, .pane-handle-right"), "Default right edge must be empty");
@@ -152,6 +155,41 @@ async function run() {
     assert(Math.abs(px(".cm-content") - bodyBefore) < 0.6, "字号应已还原到起点");
   }
 
+  /* ---------------- 字号菜单：改名 + 连点不关菜单 + Ctrl+滚轮 ---------------- */
+  {
+    const vm = [...document.querySelectorAll<HTMLButtonElement>(".menu-root")].find(
+      (b) => b.textContent?.trim() === "视图",
+    )!;
+    const size = () =>
+      Number.parseFloat(getComputedStyle(document.querySelector<HTMLElement>(".cm-content")!).fontSize);
+    const items = () => [...document.querySelectorAll<HTMLElement>(".menu-item")];
+
+    vm.click();
+    await wait();
+    assert(items().some((i) => (i.textContent ?? "").includes("还原默认")), "「实际大小」应改名为「还原默认」");
+    assert(!items().some((i) => (i.textContent ?? "").includes("实际大小")), "不该再出现「实际大小」");
+
+    const before = size();
+    items().find((i) => (i.textContent ?? "").includes("放大字号"))!.click();
+    await wait(150);
+    assert(document.querySelector(".menu-pop"), "点「放大字号」后菜单不该关（要能连点调）");
+    assert(size() > before, `放大字号应生效（${before} → ${size()}）`);
+    items().find((i) => (i.textContent ?? "").includes("缩小字号"))!.click();
+    await wait(150);
+    assert(Math.abs(size() - before) < 0.6, `缩小字号应回到原值（现在 ${size()}）`);
+
+    vm.click(); // 收起
+    await wait();
+
+    // Ctrl + 滚轮：上滑放大、下滑缩小
+    window.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true }));
+    await wait(150);
+    assert(size() > before, `Ctrl+滚轮上滑应放大（${before} → ${size()}）`);
+    window.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, ctrlKey: true, bubbles: true, cancelable: true }));
+    await wait(150);
+    assert(Math.abs(size() - before) < 0.6, `Ctrl+滚轮下滑应缩回（现在 ${size()}）`);
+  }
+
   send("SHOT: default");
   await wait();
   const viewMenu = [...document.querySelectorAll<HTMLButtonElement>(".menu-root")].find((b) => b.textContent?.trim() === "视图")!;
@@ -201,6 +239,45 @@ async function run() {
   click(".menu-item", "字体与排版…");
   await wait();
   assert(document.querySelector(".settings-mask"), "Typography must remain available in theme menu");
+
+  /* ---------------- 字体下拉（Word 式 + 可搜索）与「滑块移除」 ---------------- */
+  {
+    assert(document.querySelector(".font-combo"), "设置里应该有字体下拉");
+    // 只去掉「字号」那个滑块；行距的滑块保留，所以按行精确检查
+    const sizeRow = document.querySelector(".set-num")?.closest(".set-row");
+    assert(sizeRow, "字号那一行应该还在（数值输入 + 加减按钮）");
+    assert(!sizeRow!.querySelector('input[type="range"]'), "字号那一行不该再有滑块");
+    document.querySelector<HTMLElement>(".font-combo")!.click();
+    await wait(250);
+    const optNames = () =>
+      [...document.querySelectorAll<HTMLElement>(".font-opt")].map((o) => (o.textContent ?? "").trim());
+    assert(optNames().includes("主题默认"), `下拉第一项该是「主题默认」，实际：${optNames().join(" | ")}`);
+    assert(optNames().includes("思源黑体 CN"), `下拉该列出本机字体，实际：${optNames().join(" | ")}`);
+
+    const search = document.querySelector<HTMLInputElement>(".font-search");
+    assert(search, "下拉里应该有搜索框");
+    // React 受控输入：直接赋 value 不会触发 onChange，必须走原生 setter 再发 input
+    const setInputValue = (el: HTMLInputElement, v: string) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(el, v);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    setInputValue(search!, "思源");
+    await wait(200);
+    assert(optNames().includes("思源黑体 CN"), "搜索应保留匹配项");
+    assert(!optNames().includes("Noto Sans"), `搜索应过滤掉不匹配项，实际：${optNames().join(" | ")}`);
+
+    [...document.querySelectorAll<HTMLElement>(".font-opt")]
+      .find((o) => (o.textContent ?? "").trim() === "思源黑体 CN")!
+      .click();
+    await wait(200);
+    assert(!document.querySelector(".font-drop"), "选完应收起下拉");
+    assert(
+      (document.querySelector(".font-combo-name")?.textContent ?? "").includes("思源黑体 CN"),
+      `下拉框应显示所选字体名，实际 ${document.querySelector(".font-combo-name")?.textContent}`,
+    );
+  }
+
   send("SHOT: settings");
   await wait();
   send("PASS: pink-white theme, default empty right edge, source/workbench menus, typography dialog");

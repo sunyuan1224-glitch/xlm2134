@@ -273,6 +273,22 @@ export default function App() {
     };
   }, [init, saveAll]);
 
+  /*
+   * Ctrl + 滚轮：上滑放大字号、下滑缩小（走同一套 zoomBy，带上下限）。
+   * 必须 preventDefault：WebKit 自己会把 Ctrl+滚轮当页面缩放，不放行会两套一起动。
+   * 带 Shift/Alt 的组合不拦，留给以后可能的横向滚动之类的用途。
+   */
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (e.deltaY === 0) return;
+      e.preventDefault();
+      zoomBy(e.deltaY < 0 ? 2 : -2);
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, []);
+
   const onCursor = useCallback((line: number, col: number, selLen: number) => {
     setCursor({ line, col, selLen });
   }, []);
@@ -792,10 +808,11 @@ export default function App() {
         },
         "separator",
         { title: "窗口" },
-        { label: "放大字号", shortcut: "Ctrl+Shift+=", onClick: () => zoomBy(2) },
-        { label: "缩小字号", shortcut: "Ctrl+Shift+-", onClick: () => zoomBy(-2) },
+        // keepOpen：连点调字号时菜单不关，方便一直按
+        { label: "放大字号", shortcut: "Ctrl+Shift+= / 滚轮", keepOpen: true, onClick: () => zoomBy(2) },
+        { label: "缩小字号", shortcut: "Ctrl+Shift+- / 滚轮", keepOpen: true, onClick: () => zoomBy(-2) },
         {
-          label: "实际大小",
+          label: "还原默认",
           onClick: () => {
             setTypography({ fontSize: 16 });
             useStore.getState().setStatus("字号已重置为 16px");
