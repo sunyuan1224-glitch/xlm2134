@@ -155,6 +155,21 @@ async function run() {
   send("SHOT: default");
   await wait();
   const viewMenu = [...document.querySelectorAll<HTMLButtonElement>(".menu-root")].find((b) => b.textContent?.trim() === "视图")!;
+
+  // 回归：视图菜单里不再有「大纲（纲要）」入口 —— 大纲统一走左侧栏标签，菜单里不再重复一份
+  viewMenu.click();
+  await wait();
+  assert(
+    ![...document.querySelectorAll(".menu-item")].some((i) => i.textContent?.includes("大纲")),
+    "视图菜单里不该再有「大纲」入口",
+  );
+  assert(
+    [...document.querySelectorAll(".sidebar-tab")].some((t) => t.textContent?.includes("大纲")),
+    "大纲的入口应该留在左侧栏标签上",
+  );
+  viewMenu.click(); // 收起，交回下面的流程
+  await wait();
+
   viewMenu.click();
   await wait();
   click(".menu-item", "源码模式");

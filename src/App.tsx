@@ -783,7 +783,6 @@ export default function App() {
         "separator",
         { title: "面板" },
         { label: "左侧栏", shortcut: "Ctrl+Shift+L", checked: sidebarOpen, onClick: () => toggleSidebar() },
-        { label: "大纲（纲要）", checked: sidebarOpen && sidebarTab === "outline", onClick: () => useStore.getState().openSidebarTab("outline") },
         { label: "工作区搜索", checked: sidebarOpen && sidebarTab === "search", onClick: () => useStore.getState().openSidebarTab("search") },
         {
           label: "小说工作台（右栏）",
