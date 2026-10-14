@@ -16,6 +16,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { isInCode, livePreview } from "./livePreview";
 import { installImeGuard, planExternalSync, type ImeGuard } from "./ime";
 import { listKeys } from "./listKeys";
+import { arrowKeys } from "./arrowKeys";
 import { baseTheme, highlightStyle, sourceHighlightStyle } from "./extensions";
 import { syntaxHighlighting } from "@codemirror/language";
 import { api } from "../api";
@@ -132,6 +133,8 @@ export function Editor({
        * 交给它的 keymap 处理（续行、序号递增仍由它负责）。
        */
       Prec.highest(keymap.of(listKeys)),
+      // 上下键要压过 defaultKeymap 的 cursorLineDown/Up（默认优先级低，Prec.high 就够）
+      Prec.high(keymap.of(arrowKeys)),
       keymap.of([
         { key: "Mod-s", run: () => { cbs.current.onSave(); return true; } },
         ...defaultKeymap,

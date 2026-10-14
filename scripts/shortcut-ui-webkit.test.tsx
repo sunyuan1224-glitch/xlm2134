@@ -362,6 +362,24 @@ async function run() {
 
   /* ---------------- 列表行为：对齐 Typora 的三处 ---------------- */
 
+  await ck("上下键跨过渲染过的块时，先进入那一段的源码（不整块跳）", () => {
+    // 第 3 行是一条会长到软换行的段落的源码；它在即时预览里被渲染成块，默认行为会整块跳过去
+    const longDoc = "短句一。\n\n" + "长".repeat(200) + "。\n\n短句二。\n";
+    const lineNo = () => view().state.doc.lineAt(view().state.selection.main.head).number;
+    resetDoc(longDoc, 0);
+    press("ArrowDown");
+    assert(lineNo() === 2, `第一步是相邻行，应正常落到第 2 行，实际第 ${lineNo()} 行`);
+    press("ArrowDown");
+    assert(lineNo() === 3, `跨过渲染块时应进入它的源码行（期望第 3 行，实际第 ${lineNo()} 行）`);
+    press("ArrowDown");
+    assert(lineNo() === 3, "进了块内之后应逐视觉行下移，仍在同一源码行");
+    press("ArrowUp");
+    assert(lineNo() === 3, "往上同理：块内仍是逐行走");
+    press("ArrowUp");
+    assert(lineNo() === 2, `再往上应回到上一行（期望第 2 行，实际第 ${lineNo()} 行）`);
+    resetDoc(DOC, 0);
+  });
+
   await ck("空列表项按 Enter → 摘掉标记、退出列表", () => {
     resetDoc("- 甲\n- \n", 6); // 光标停在第二个空项的末尾
     press("Enter");
