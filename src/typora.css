@@ -38,6 +38,15 @@ html:root {
 }
 
 
+/*
+ * 字号一律用 em（相对编辑器正文字号），不要用 rem。
+ *
+ * 原因：正文用的是 --editor-font-size（设置在 html 上），而 rem 也是相对 html 的根字号，
+ * 看着像"跟得上"，其实根字号不随字号设置变化 —— 于是放大正文字号时，标题还停在原尺寸，
+ * h2/h3 会被正文反超（用户报的就是这个）。改成 em 后标题与正文同比例缩放。
+ * 只有与字体无关的布局节奏（滚动留白、缩进、内边距）才继续用 rem。
+ */
+
 /* ==========================================================================
    2. 标题层级（紧凑外边距、收紧行高、字重与字号）
    ========================================================================== */
@@ -50,38 +59,43 @@ html:root {
 .editor-host h6 {
   color: var(--fg-strong);
   font-weight: 700;
-  margin: 0.75rem 0 -0.25rem 0;
+  margin: 0.75em 0 -0.25em 0;
   padding: 0 0.5rem;
 }
 
 .editor-host h1 {
-  font-size: 1.5rem;
+  font-size: 1.5em;
   line-height: 1.3;
 }
 
 .editor-host h2 {
-  font-size: 1.25rem;
+  font-size: 1.25em;
   line-height: 1.35;
 }
 
 .editor-host h3 {
-  font-size: 1.15rem;
+  font-size: 1.15em;
   line-height: 1.4;
-  margin: 0.5rem 0 -0.25rem 0;
+  margin: 0.5em 0 -0.25em 0;
 }
 
 .editor-host h4 {
-  font-size: 1rem;
+  font-size: 1.08em;
   line-height: 1.5;
-  margin: 0.5rem 0 -0.25rem 0;
+  margin: 0.5em 0 -0.25em 0;
 }
 
+/* h5/h6 也不再小于正文：靠字重与颜色区分层级，而不是靠"比正文还小" */
 .editor-host h5,
 .editor-host h6 {
-  font-size: 0.9rem;
+  font-size: 1.04em;
   line-height: 1.5;
   font-weight: 600;
-  margin: 0.5rem 0 -0.25rem 0;
+  margin: 0.5em 0 -0.25em 0;
+}
+
+.editor-host h6 {
+  font-size: 1em;
 }
 
 /* ==========================================================================
@@ -104,7 +118,7 @@ html:root {
 
 .editor-host ul,
 .editor-host ol {
-  line-height: 1.65rem;
+  line-height: var(--editor-line-height, 1.65);
   margin: 0.25rem 0;
 }
 
@@ -194,7 +208,7 @@ html:root {
   border: 1px dashed var(--border);
   border-radius: 8px;
   color: var(--fg-dim);
-  font-size: 0.85rem;
+  font-size: 0.85em;
   margin: 0.5rem auto;
   background: rgba(172, 63, 112, 0.06);
 }
@@ -213,7 +227,7 @@ html:root {
   border-radius: 8px;
   padding: 8px 12px;
   margin: 0.5rem 0.5rem 1rem;
-  font-size: 12px;
+  font-size: 0.8em;
   font-family: var(--font-mono);
   color: var(--fg-dim);
   position: relative;
@@ -416,7 +430,7 @@ kbd {
   padding: .6rem .85rem;
   overflow-x: auto;
   font-family: var(--font-mono);
-  font-size: .88rem;
+  font-size: .88em;
 }
 .cm-lp-rendered .md-source-fallback {
   margin: .6rem 0;
@@ -425,7 +439,7 @@ kbd {
   border: 1px dashed var(--border);
   border-radius: 8px;
 }
-.cm-lp-rendered .md-source-fallback-note { color: var(--fg-dim); font-size: .82rem; margin-bottom: .35rem; }
+.cm-lp-rendered .md-source-fallback-note { color: var(--fg-dim); font-size: .82em; margin-bottom: .35rem; }
 .cm-lp-rendered a { color: var(--accent); text-decoration: underline; cursor: pointer; }
 .cm-lp-rendered pre code { white-space: pre; }
 .cm-focus .cm-lp-rendered { opacity: .35; }

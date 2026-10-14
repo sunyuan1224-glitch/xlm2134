@@ -99,6 +99,59 @@ async function run() {
     assert(!document.querySelector(".menu-pop"), "再次点击同一个菜单应把面板收起");
   }
 
+  /*
+   * 回归：放大字号必须带着标题一起放大。
+   *
+   * 曾经预览里的标题写的是 rem —— rem 相对 html 根字号，而根字号并不随「字号」设置变化，
+   * 于是放大正文（--editor-font-size）后标题尺寸纹丝不动，h2/h3 反而比正文还小。
+   * 现在标题用 em，必须与正文同比例缩放，且任何字号下都不得小于正文。
+   *
+   * 注意：标题行是「当前行」时按源码显示（.cm-tk-h1），挪开光标后才渲染成
+   * .cm-lp-rendered 里的 <h1> —— rem 的坑就在后者，所以用例必须先把光标挪走。
+   */
+  {
+    const px = (selector: string) => {
+      const el = document.querySelector<HTMLElement>(selector);
+      assert(el, `量字号时找不到 ${selector}`);
+      return Number.parseFloat(getComputedStyle(el!).fontSize);
+    };
+    const zoom = (key: string) =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key, ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }),
+      );
+
+    for (let i = 0; i < 2; i++) {
+      document
+        .querySelector(".cm-content")
+        ?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+      await wait(80);
+    }
+
+    const bodyBefore = px(".cm-content");
+    const h1Before = px(".cm-lp-rendered h1");
+    assert(h1Before > bodyBefore, `一级标题必须大于正文（标题 ${h1Before}px / 正文 ${bodyBefore}px）`);
+
+    zoom("=");
+    await wait(60);
+    zoom("=");
+    await wait(60);
+
+    const bodyAfter = px(".cm-content");
+    const h1After = px(".cm-lp-rendered h1");
+    assert(bodyAfter > bodyBefore, `放大字号应生效（前 ${bodyBefore}px / 后 ${bodyAfter}px）`);
+    assert(h1After > h1Before, `标题必须跟着放大（前 ${h1Before}px / 后 ${h1After}px）`);
+    assert(h1After > bodyAfter, `放大后标题仍须大于正文（标题 ${h1After}px / 正文 ${bodyAfter}px）`);
+    const ratio = h1After / bodyAfter;
+    assert(Math.abs(ratio - 1.5) < 0.1, `标题与正文的比例应保持约 1.5，实际 ${ratio.toFixed(2)}`);
+
+    // 还原字号，免得影响后面的截图
+    zoom("-");
+    await wait(40);
+    zoom("-");
+    await wait(40);
+    assert(Math.abs(px(".cm-content") - bodyBefore) < 0.6, "字号应已还原到起点");
+  }
+
   send("SHOT: default");
   await wait();
   const viewMenu = [...document.querySelectorAll<HTMLButtonElement>(".menu-root")].find((b) => b.textContent?.trim() === "视图")!;

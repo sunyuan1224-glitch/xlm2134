@@ -155,8 +155,8 @@ export const baseTheme = EditorView.theme(
     ".cm-tk-h2": { color: "var(--fg-strong)", fontWeight: "700", fontSize: "1.32em" },
     ".cm-tk-h3": { color: "var(--fg-strong)", fontWeight: "600", fontSize: "1.16em" },
     ".cm-tk-h4": { color: "var(--fg-strong)", fontWeight: "600", fontSize: "1.08em" },
-    ".cm-tk-h5": { color: "var(--fg-strong)", fontWeight: "600", fontSize: "1em" },
-    ".cm-tk-h6": { color: "var(--fg-dim)", fontWeight: "600", fontSize: "0.96em" },
+    ".cm-tk-h5": { color: "var(--fg-strong)", fontWeight: "600", fontSize: "1.04em" },
+    ".cm-tk-h6": { color: "var(--fg-dim)", fontWeight: "600", fontSize: "1em" },
     /* 源码模式：标题不放大 */
     ".cm-tk-hplain": { color: "var(--fg-strong)", fontWeight: "600" },
     ".cm-tk-strong": { color: "var(--fg-strong)", fontWeight: "700" },
