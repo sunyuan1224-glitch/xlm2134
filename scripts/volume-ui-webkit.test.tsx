@@ -1312,11 +1312,59 @@ async function run() {
   );
   assert(
     rows(".outline-item.kind-chapter").every((r) => r.classList.contains("missing")),
-    "两份都还没建，都该是虚线「＋」",
-  );
+      "两份都还没建，都该是虚线「＋」",
+    );
 
-  send(
-    "PASS: 文件树卷行/卷细线/纲要导航树（Phase A）+ 右键菜单区分/快速创建+行内改名/新建书·卷·章节纲要/卷纲随卷改名/总纲自动创建/卷注册表/指针事件拖动排序与移动/纲要跟书走·正文区编辑·双击改名/添加章节默认名顺延（Phase B）+ 反转卷与章显示·再按还原·导出顺序不受影响/删章连带删纲要（Phase C）+ 松散章夹进两卷之间·侧车混合顺序·反转后仍夹在同两卷之间·卷改名与删除同步·新建卷插回卷堆（Phase D）+ 卷章同名纲要不吞行·重名章各自成行（Phase E）",
+    /* Phase F：章节纲要可以右键「清除大纲」；卷纲与总纲右键不动 */
+    {
+      // 先点章行的「＋」建出一份章纲，才有东西可清
+      const missing = rows(".outline-item.kind-chapter").find((r) => r.classList.contains("missing"));
+      assert(missing, "该有一个还没建纲要的章行（先点它建出来）");
+      missing!.click();
+      await wait(400);
+
+      const target = rows(".outline-item.kind-chapter").find((r) => !r.classList.contains("missing"));
+      assert(
+        target,
+        `点完「＋」该有一份章纲了，实际章行：${rows(".outline-item.kind-chapter")
+          .map((r) => (r.textContent ?? "").trim())
+          .join(" | ")}`,
+      );
+      const outlinePath = (target!.getAttribute("title") ?? "").split("（")[0];
+      assert(memFiles.has(outlinePath), `行上的路径该指向真实文件：${outlinePath}`);
+
+      // 卷纲 / 总纲右键：什么都不该弹
+      let checkedNonChapter = 0;
+      for (const sel of [".outline-item.kind-book", ".outline-item.kind-volume"]) {
+        const row = rows(sel).find((r) => !r.classList.contains("missing"));
+        if (!row) continue;
+        checkedNonChapter++;
+        row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 12, clientY: 12 }));
+        await wait(150);
+        assert(!(document.body.textContent ?? "").includes("清除大纲"), `${sel} 右键不该出现「清除大纲」`);
+      }
+      assert(checkedNonChapter > 0, "这条用例必须真的右键过卷纲或总纲，否则等于没验");
+
+      // 章纲右键 → 清除大纲
+      target!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+      await wait(200);
+      assert((document.body.textContent ?? "").includes("清除大纲"), "章节纲要右键应弹出「清除大纲」");
+      clickMenu("清除大纲");
+      await wait(400);
+
+      assert(!memFiles.has(outlinePath), `清除后后端应删掉这份纲要文件：${outlinePath}`);
+      const after = rows(".outline-item.kind-chapter").find((r) =>
+        (r.getAttribute("title") ?? "").startsWith(outlinePath),
+      );
+      assert(after?.classList.contains("missing"), "清除后该行应回到虚线「＋」态（＝点 + 生成之前的样子）");
+      assert(
+        !(document.body.textContent ?? "").includes("清除大纲"),
+        "清除之后菜单应该关掉",
+      );
+    }
+
+    send(
+      "PASS: 文件树卷行/卷细线/纲要导航树（Phase A）+ 右键菜单区分/快速创建+行内改名/新建书·卷·章节纲要/卷纲随卷改名/总纲自动创建/卷注册表/指针事件拖动排序与移动/纲要跟书走·正文区编辑·双击改名/添加章节默认名顺延（Phase B）+ 反转卷与章显示·再按还原·导出顺序不受影响/删章连带删纲要（Phase C）+ 松散章夹进两卷之间·侧车混合顺序·反转后仍夹在同两卷之间·卷改名与删除同步·新建卷插回卷堆（Phase D）+ 卷章同名纲要不吞行·重名章各自成行（Phase E）+ 章节纲要右键「清除大纲」·删后回到虚线＋·卷纲与总纲右键不动（Phase F）",
   );
 }
 

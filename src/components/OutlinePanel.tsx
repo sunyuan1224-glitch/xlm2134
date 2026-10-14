@@ -23,6 +23,7 @@ import { useStore } from "../store";
 import { basename, dirName, isChapterFile, isOutlineFile } from "../lib/chapter";
 import { isVolumeDir, sortTreeNodes } from "../lib/order";
 import { BOOK_OUTLINE_NAME, OUTLINE_DIR, bookOutlinePath } from "../lib/volume";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 
 /** 导航树里的一行 */
 interface OutlineRow {
@@ -183,6 +184,41 @@ export function OutlinePanel() {
     return out;
   }, [tree, files, volumes, chapters, volumeSet, chapterOrder, collapsed, flippedSet]);
 
+  /** 右键菜单（只有"已存在的章节纲要"才给）：位置 + 目标行 */
+  const [menu, setMenu] = useState<{ x: number; y: number; row: OutlineRow } | null>(null);
+
+  /**
+   * 右键一行。只对**已存在的章节纲要**开菜单：卷纲与总纲右键不动（它们不允许清除），
+   * 还没有纲要的章行也不给（那时菜单里那一条没有意义）。
+   */
+  const onRowContextMenu = (e: React.MouseEvent, row: OutlineRow) => {
+    if (row.kind !== "chapter" || !row.exists) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ x: e.clientX, y: e.clientY, row });
+  };
+
+  /**
+   * 清除章节纲要：直接让后端删掉这份 outline 文件，然后刷新。
+   * 刷新后该章行的 exists 变回 false，行上自然显示虚线「＋」——
+   * 也就是"点 + 生成纲要之前的样子"，不需要额外的前端状态。
+   * 正开着这个文件时先关掉标签，免得留一个指向已删文件的标签页。
+   */
+  const clearOutline = useCallback(
+    async (row: OutlineRow) => {
+      if (!root) return;
+      try {
+        await api.deleteEntry(root, row.path);
+        useStore.getState().closeTab(row.path);
+        await useStore.getState().refresh();
+        useStore.getState().setStatus(`已清除 ${row.path}`);
+      } catch (e) {
+        useStore.getState().setStatus(`清除失败：${String(e)}`);
+      }
+    },
+    [root],
+  );
+
   /** 点一行：已存在就在正文区打开，还没有就先建出来再打开 */
   const openOrCreate = useCallback(
     async (row: OutlineRow) => {
@@ -306,6 +342,7 @@ export function OutlinePanel() {
                 void openOrCreate(r);
               }
             }}
+            onContextMenu={(e) => onRowContextMenu(e, r)}
           >
             {r.foldKey ? (
               <span
@@ -340,6 +377,23 @@ export function OutlinePanel() {
           </div>
         ))}
       </div>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={
+            [
+              {
+                key: "clear-chapter-outline",
+                label: "清除大纲",
+                danger: true,
+                onClick: () => void clearOutline(menu.row),
+              },
+            ] as ContextMenuItem[]
+          }
+        />
+      )}
     </div>
   );
 }
