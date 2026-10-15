@@ -13,7 +13,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { GFM } from "@lezer/markdown";
 import { markdown } from "@codemirror/lang-markdown";
-import { isInCode, livePreview } from "./livePreview";
+import { isInCode, livePreview, readBlockMetrics } from "./livePreview";
 import { installImeGuard, planExternalSync, type ImeGuard } from "./ime";
 import { listKeys } from "./listKeys";
 import { arrowKeys } from "./arrowKeys";
@@ -108,6 +108,8 @@ export function Editor({
       : [
           livePreview({
             onLink: (href, mod) => cbs.current.onLinkClick?.(href, mod),
+            // 给「还没渲染到屏幕上的块」估高度用；懒读 + 缓存，见 livePreview.readBlockMetrics
+            metrics: () => readBlockMetrics(hostRef.current),
             image: async src => {
               const root = useStore.getState().root;
               if (!root) return null;

@@ -26,6 +26,156 @@ import { blockComplexity } from "../lib/markdownBlocks";
 export interface PreviewOptions {
   onLink?: (href: string, mod: boolean) => void;
   image?: (src: string) => Promise<string | null>;
+  /**
+   * 当前排版参数（字号 / 行高 / 正文栏宽度）。
+   * 只给「还没渲染到屏幕上的块」估高度用 —— 那一步会把估算值写进 CodeMirror 的高度表，
+   * 也就是滚动条的量程，估错了拖动滚动条时条与内容就会一路错位（见 estimatedHeight）。
+   */
+  metrics?: () => BlockMetrics | null;
+}
+
+/* ================================================================== *
+ * 未渲染块的高度估算
+ *
+ * 为什么必须有这个：
+ *   CodeMirror 只测量**已经画出来**的行，屏幕外的高度靠估。整块渲染的段落是 block replace
+ *   widget，而 WidgetType.estimatedHeight 默认是 -1（未知），此时它按「一行」计入总高
+ *   （@codemirror/view 的 NodeBuilder.point：`if (height < 0) height = this.oracle.lineHeight`）。
+ *   一个渲染后 2~3 行的段落被算成 1 行 → 整篇总高被低估三成。
+ *
+ *   这份估算会以 `.cm-gap` 垫片的形式落到 DOM 上，就是浏览器滚动条的量程：往下拖的时候，
+ *   新滚进视口的块被真量、垫片被撑大，量程一路变长 → 滑块和内容越拖越对不上。
+ *   实测 8 万字章节：拖动中总高 83655px → 118020px（+41%），而帧间隔一直是正常的 16.4ms ——
+ *   手感的根源是量程在变，不是主线程卡。测量脚本：scripts/test-scroll-perf.mjs。
+ *
+ *   这里的估算不参与真实排版：真量到以后一律以实测高度为准，只影响「还没量到的时候先按多少算」。
+ * ================================================================== */
+
+export interface BlockMetrics {
+  /** 正文字号 px（--editor-font-size） */
+  fontSize: number;
+  /** 行高倍数（--editor-line-height），行盒高度 = fontSize × lineHeight */
+  lineHeight: number;
+  /** 渲染块的**文字**可用宽度 px（已扣掉 .cm-content 与 .cm-lp-rendered 的左右 padding） */
+  textWidth: number;
+  /** 根字号 px：.cm-lp-rendered 里的 rem 边距按它换算 */
+  rem: number;
+}
+
+/** 标题字号倍数，与 typora.css 的 .editor-host h1~h6 保持一致 */
+const HEADING_SCALE = [0, 1.5, 1.25, 1.15, 1.08, 1.04, 1.04];
+
+/**
+ * 一个块源码折算出「几个汉字宽」：汉字与全角标点算 1，其余非空白字符算 0.5（半个字宽）。
+ * 折半的依据是字体：中文字体里一个汉字约等于两个 ASCII 字符宽（半个字宽的那类字符
+ * 在排版上占位就是一半），Markdown 标记字符（#、*、-）也算 0.5，量少不单独剥。
+ */
+/*
+ * 宽字符（占满一个字宽）：CJK 汉字与标点、假名、谚文、全角符号，外加补充平面汉字。
+ * 用码点区间直接比，不逐字符跑正则：改文档时这一趟要给所有块各算一遍（长篇上千块），
+ * 每次都比较 + 正则对象都会拖慢打字 —— 虽然相比「重建全部预览块」那一步只是零头。
+ * 注意别写成 \u20000 这种没带 u 标志的转义：那会被拆成 "\u2000" + "0"，区间全乱
+ * （曾经因此把拉丁字母也按一个字宽算，英文段落每块多估一整行）。
+ */
+function isWide(ch: string): boolean {
+  const c = ch.codePointAt(0)!;
+  return (
+    (c >= 0x1100 && c <= 0x11ff) ||
+    (c >= 0x2e80 && c <= 0x303f) ||
+    (c >= 0x3040 && c <= 0x30ff) ||
+    (c >= 0x3400 && c <= 0x4dbf) ||
+    (c >= 0x4e00 && c <= 0x9fff) ||
+    (c >= 0xa960 && c <= 0xa97f) ||
+    (c >= 0xac00 && c <= 0xd7a3) ||
+    (c >= 0xf900 && c <= 0xfaff) ||
+    (c >= 0xfe30 && c <= 0xfe4f) ||
+    (c >= 0xff00 && c <= 0xffef) ||
+    (c >= 0x20000 && c <= 0x3ffff)
+  );
+}
+
+function widthUnits(raw: string): number {
+  let units = 0;
+  for (const ch of raw) {
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") continue;
+    units += isWide(ch) ? 1 : 0.5;
+  }
+  return units;
+}
+
+/** 一个块的高度估算提示：建 state 时算一次，estimatedHeight 只做乘法 */
+export interface BlockHint {
+  units: number;
+  /** 标题级别（1~6），非标题是 0 */
+  heading: number;
+  /** 围栏代码块的行数（不含围栏本身），非代码块是 0 */
+  codeLines: number;
+}
+
+export function blockHint(raw: string): BlockHint {
+  const head = /^(#{1,6})[ \t]/.exec(raw);
+  if (head) return { units: widthUnits(raw), heading: head[1].length, codeLines: 0 };
+  if (/^```/.test(raw)) {
+    // 围栏代码块不折行（pre code 是 white-space: pre），行数就是源码行数
+    const lines = raw.split("\n");
+    return { units: 0, heading: 0, codeLines: Math.max(1, lines.length - 2) };
+  }
+  return { units: widthUnits(raw), heading: 0, codeLines: 0 };
+}
+
+/**
+ * 估算这个块渲染出来大概多高。
+ *
+ * 文字块：折行数 × 行盒 + 段落外边距（.cm-lp-rendered p 是 margin: .45rem 0，合计 0.9rem）。
+ * 标题：字号按 typora.css 的倍数放大，再加自己的 margin（.75em / .5em 上边距，-.25em 下边距）。
+ * 代码块：等宽 .88em、四周 padding .6rem + 1px 边框。
+ * 图片 / 表格 / 分割线等少见块走文字块那条，属于粗估（见交付说明）。
+ */
+export function estimateBlockHeight(hint: BlockHint, m: BlockMetrics): number {
+  const lineBox = m.fontSize * m.lineHeight;
+  if (hint.heading > 0) {
+    const scale = HEADING_SCALE[hint.heading] ?? 1;
+    const em = m.fontSize * scale;
+    const top = (hint.heading <= 2 ? 0.75 : 0.5) * em;
+    return lineBox * scale + top - 0.25 * em;
+  }
+  if (hint.codeLines > 0) {
+    const box = m.fontSize * 0.88 * m.lineHeight;
+    return hint.codeLines * box + 1.2 * m.rem + 2;
+  }
+  const perLine = Math.max(1, m.textWidth / m.fontSize);
+  const lines = Math.max(1, Math.ceil(hint.units / perLine));
+  // 故意不取整：整块渲染的块成百上千，每块舍掉 0.3px 叠起来就是几百 px 的量程漂移
+  return lines * lineBox + 0.9 * m.rem;
+}
+
+/*
+ * 排版参数的读取与缓存。
+ *
+ * 一次高度表重建会把每个块的 estimatedHeight 都问一遍（长篇上千次），逐次读样式 / 布局
+ * 太贵；而参数只在「改字号 / 改行高 / 改窗口宽度」时才变，于是按 200ms 缓存一次。
+ * 读不到的场合（视图刚建、还没有 .cm-content）不缓存，免得把一次失败缓存成 200ms 的瞎估。
+ */
+let metricsCache: { at: number; host: Element | null; m: BlockMetrics } | null = null;
+const METRICS_TTL_MS = 200;
+
+export function readBlockMetrics(host: Element | null): BlockMetrics | null {
+  const now = performance.now();
+  if (metricsCache && metricsCache.host === host && now - metricsCache.at < METRICS_TTL_MS) {
+    return metricsCache.m;
+  }
+  const content = host?.querySelector<HTMLElement>(".cm-content");
+  if (!content) return null;
+  const cs = getComputedStyle(host!);
+  const fontSize = parseFloat(cs.getPropertyValue("--editor-font-size"));
+  const lineHeight = parseFloat(cs.getPropertyValue("--editor-line-height"));
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  // 文字宽度要扣两层左右 padding：.cm-content 的 1rem，以及 .cm-lp-rendered 的 .5rem
+  const textWidth = content.clientWidth - 3 * rem;
+  if (!fontSize || !lineHeight || textWidth <= 0) return null;
+  const m: BlockMetrics = { fontSize, lineHeight, textWidth, rem };
+  metricsCache = { at: now, host, m };
+  return m;
 }
 
 /**
@@ -190,8 +340,25 @@ function wireWidgetEvents(el: HTMLElement, view: EditorView, from: number, to: n
  * ================================================================== */
 
 class PreviewWidget extends WidgetType {
-  constructor(readonly html: string, readonly from: number, readonly to: number, readonly options: PreviewOptions) { super(); }
+  constructor(
+    readonly html: string,
+    readonly from: number,
+    readonly to: number,
+    readonly options: PreviewOptions,
+    readonly hint: BlockHint,
+  ) { super(); }
   eq(other: PreviewWidget) { return this.html === other.html && this.from === other.from && this.to === other.to; }
+  /**
+   * 还没渲染到屏幕上的块，按估算的高度计入总高（默认实现返回 -1＝未知，CodeMirror 会当成
+   * 一行，整篇总高因此少算三成，滚动条量程会在拖动过程中一路变长）。真量到以后以实测为准。
+   *
+   * 排版参数是**懒读**的：widget 建出来的时候（建 state）DOM 还没影，而 estimatedHeight 是
+   * 搭高度表时才问的，那时已经能量到样式与宽度了。读不到就返回 -1，退回 CodeMirror 原行为。
+   */
+  get estimatedHeight() {
+    const m = this.options.metrics?.() ?? null;
+    return m ? estimateBlockHeight(this.hint, m) : -1;
+  }
   toDOM(view: EditorView) {
     const el = document.createElement("div");
     el.className = "cm-lp-rendered";
@@ -236,13 +403,19 @@ export function livePreview(options: PreviewOptions = {}): Extension {
       const last = state.doc.lineAt(s.to).to;
       return first <= to && last >= from;
     });
-    const add = (from: number, to: number, html: string) => {
+    const add = (from: number, to: number, html: string, hint: BlockHint) => {
       if (to > from && !active(from, to)) decorations.push(Decoration.replace({
-        widget: new PreviewWidget(html, from, to, options), block: true,
+        widget: new PreviewWidget(html, from, to, options, hint), block: true,
       }).range(from, to));
     };
     if (fm) {
-      add(fm.from, fm.to, `<details class="cm-lp-frontmatter"><summary>YAML 元数据</summary><pre>${escapeHtml(state.sliceDoc(fm.from, fm.to))}</pre></details>`);
+      const fmRaw = state.sliceDoc(fm.from, fm.to);
+      add(
+        fm.from,
+        fm.to,
+        `<details class="cm-lp-frontmatter"><summary>YAML 元数据</summary><pre>${escapeHtml(fmRaw)}</pre></details>`,
+        blockHint(fmRaw),
+      );
     }
     const cursor = (ensureSyntaxTree(state, state.doc.length, 100) || syntaxTree(state)).cursor();
     if (cursor.firstChild()) do {
@@ -275,7 +448,7 @@ export function livePreview(options: PreviewOptions = {}): Extension {
         html = renderBlock(raw, doc, from);
         cacheHtml.set(key, html);
       }
-      add(from, to, html);
+      add(from, to, html, blockHint(raw));
     } while (cursor.nextSibling());
     return Decoration.set(decorations, true);
   }
