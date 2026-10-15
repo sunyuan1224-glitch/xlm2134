@@ -14,7 +14,7 @@
 import { EditorState, StateField, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
-import { markdownToHtml, escapeHtml } from "../lib/mdExport";
+import { markdownToHtml, collectLinkDefs, escapeHtml } from "../lib/mdExport";
 import { findAnchorPos } from "../lib/links";
 import { frontmatterEndLine } from "../lib/outline";
 import { blockComplexity } from "../lib/markdownBlocks";
@@ -203,8 +203,80 @@ export function readBlockMetrics(host: Element | null): BlockMetrics | null {
  * 兼容垫片，**它从来没生效过**：探针里 md 和 document 传的是同一份文本，不跨块也照样能断言成功，
  * 所以探测恒为 true。既然探测是假的、垫片是死的，就一并删了，只留下面这行直接依赖。
  */
-function renderBlock(raw: string, doc: string, from: number): string {
-  return markdownToHtml(raw, "", { standalone: false, document: doc, sourceOffset: from });
+function renderBlock(raw: string, doc: string): string {
+  // sourceOffset 固定 0：让渲染结果与这个块在文档里的位置无关，缓存才能跨「前面的插入/删除」
+  // 复用（否则在章首多敲一个字，后面每个块的缓存都失效）。绝对偏移唯一会进 HTML 的地方是
+  // 任务框的 data-task-pos，取用时由 shiftTaskPos 按块的真实起点补回去。
+  return markdownToHtml(raw, "", { standalone: false, document: doc, sourceOffset: 0 });
+}
+
+/*
+ * 渲染结果缓存。
+ *
+ * 以前这里按「区间 (from,to)」缓存，并且**文档一变就整表清空** —— 于是每敲一个字，
+ * 整章的块都要重跑一遍 markdownToHtml（实测 1201 块 ≈ 107ms/键，源码模式只有 0.4ms）。
+ *
+ * 现在按**块源码文本**缓存，没被改动的块一律命中：
+ *   键 = 全文「跨块上下文」指纹 + 块源码；
+ *   值 = 固定 sourceOffset: 0 渲染出来的 HTML（位置无关），取用时补 data-task-pos。
+ * 上下文指纹只需覆盖 markdownToHtml 对整篇文档的依赖：它把 `doc` 只用在 collectLinkDefs 上
+ * （src/lib/mdExport.ts:868-870，函数体里 `doc` 没有第二处用途），所以按链接定义表算指纹就够；
+ * 块自己的位置、以及别的块的内容都不影响它的渲染结果。
+ *
+ * 上限按条数封顶（LRU）：长篇一章上千块，1500 条足够装下正在改的一整章；每条是「源码 + HTML」
+ * 字符串，通常几 KB，最坏也就几 MB。换文件不需要额外清理 —— 键里带着块源码与上下文指纹，
+ * 跨文档不会串，超出上限的旧条目自己会被淘汰。
+ */
+const renderCache = new Map<string, string>();
+const RENDER_CACHE_MAX = 1500;
+/** 命中统计：只给探针与排查看（scripts/test-scroll-perf.mjs 会打印），不参与渲染 */
+export const renderCacheStats = { hits: 0, misses: 0, evictions: 0 };
+export function renderCacheSize(): number {
+  return renderCache.size;
+}
+
+/** 全文「跨块上下文」指纹：链接定义表（标签/目标/标题/定义位置）拼成一个字符串 */
+function linkDefsKey(doc: string): string {
+  const defs = collectLinkDefs(doc);
+  if (defs.size === 0) return "";
+  let key = "";
+  for (const d of defs.values()) {
+    key +=
+      d.label + "\u0001" + d.raw + "\u0001" + d.href + "\u0001" + (d.title ?? "") +
+      "\u0001" + d.from + "," + d.to + "\u0002";
+  }
+  return key;
+}
+
+/** 把 HTML 里的 data-task-pos="N" 从「块内相对偏移」改成「全文绝对偏移」 */
+function shiftTaskPos(html: string, from: number): string {
+  if (from === 0 || !html.includes("data-task-pos")) return html;
+  return html.replace(/data-task-pos="(\d+)"/g, (_m, n: string) => `data-task-pos="${Number(n) + from}"`);
+}
+
+/** 取（必要时渲染）一个块的 HTML：命中记 hit，未命中就渲染并按 LRU 淘汰最久没用过的 */
+function renderCached(raw: string, doc: string, from: number, ctxKey: string): string {
+  const key = ctxKey + "\u0000" + raw;
+  let html = renderCache.get(key);
+  if (html === undefined) {
+    renderCacheStats.misses++;
+    html = renderBlock(raw, doc);
+    if (renderCache.size >= RENDER_CACHE_MAX) {
+      // Map 保持插入顺序：最早插入的＝最久没用过的，先淘汰
+      const oldest = renderCache.keys().next().value;
+      if (oldest !== undefined) {
+        renderCache.delete(oldest);
+        renderCacheStats.evictions++;
+      }
+    }
+    renderCache.set(key, html);
+  } else {
+    renderCacheStats.hits++;
+    // 命中后挪到队尾，成为「最近用过」的
+    renderCache.delete(key);
+    renderCache.set(key, html);
+  }
+  return shiftTaskPos(html, from);
 }
 
 /* ================================================================== *
@@ -388,19 +460,15 @@ class PreviewWidget extends WidgetType {
 
 export function livePreview(options: PreviewOptions = {}): Extension {
   /*
-   * 按文档对象缓存的块 HTML。
+   * 按文档对象缓存的**行级**信息（frontmatter 结束行、全文文本）。
    *
    * CodeMirror 的 Text 是不可变且结构共享的：文档没动时 `state.doc` 就是同一个引用。
-   * 光标移动也会触发重建（激活的块要在「渲染」与「源码」之间切换），但块内容一个字没变，
-   * 而重建里最贵的一步是每个块都拿整篇文档跑一遍 markdownToHtml（其中 collectLinkDefs
-   * 会扫全文），复杂度是「块数 × 全文行数」——长篇里每按一次方向键都跑一遍就是卡顿的来源。
-   * 这里把每个块的渲染结果按区间缓存下来，文档对象没换就直接复用，重建退化成一次树遍历。
-   * 缓存以 (from,to) 为键：同一篇文档里相同区间的内容必然相同，所以键本身足够。
+   * 光标移动也会触发重建（激活的块要在「渲染」与「源码」之间切换），但块内容一个字没变；
+   * 块级渲染结果另外按「块源码」走 renderCached 的 LRU 缓存（见上面那段注释）。
    */
   let cacheDoc: EditorState["doc"] | null = null;
   let cacheText = "";
   let cacheFmLine = 0;
-  let cacheHtml = new Map<string, string>();
 
   function build(state: EditorState): DecorationSet {
     const decorations: ReturnType<Decoration["range"]>[] = [];
@@ -408,11 +476,12 @@ export function livePreview(options: PreviewOptions = {}): Extension {
       cacheDoc = state.doc;
       cacheText = state.doc.toString();
       cacheFmLine = frontmatterEndLine(cacheText.split("\n"));
-      cacheHtml = new Map();
     }
     // frontmatter 的范围只随文档变化，跟着上面一起缓存（等价于 frontmatterRange(state)）
     const fm = cacheFmLine ? { from: 0, to: state.doc.line(cacheFmLine).to } : null;
     const doc = cacheText;
+    // 全文的跨块上下文指纹（链接定义表）：一次重建只算一次，所有块共用
+    const ctxKey = linkDefsKey(doc);
     const active = (from: number, to: number) => state.selection.ranges.some(s => {
       const first = state.doc.lineAt(s.from).from;
       const last = state.doc.lineAt(s.to).to;
@@ -457,13 +526,7 @@ export function livePreview(options: PreviewOptions = {}): Extension {
       }
       const raw = state.sliceDoc(from, to);
       if (!raw.trim()) continue;
-      const key = from + ":" + to;
-      let html = cacheHtml.get(key);
-      if (html === undefined) {
-        html = renderBlock(raw, doc, from);
-        cacheHtml.set(key, html);
-      }
-      add(from, to, html, blockHint(raw));
+      add(from, to, renderCached(raw, doc, from, ctxKey), blockHint(raw));
     } while (cursor.nextSibling());
     return Decoration.set(decorations, true);
   }

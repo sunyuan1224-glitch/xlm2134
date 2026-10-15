@@ -730,6 +730,52 @@ async function run() {
     resetDoc(DOC, posOf("正文一。"));
   });
 
+  await ck("改了某一块的源码，那一块的即时预览必须跟着变（渲染缓存不许送旧货）", async () => {
+    // 光标停在文档末尾：最后一块是活动块（显示源码），前两块保持整块渲染
+    const base = "# 标题甲\n\n第一段：旧词。\n\n第二段：留在这里。\n";
+    resetDoc(base, base.length);
+    await wait(300);
+    const rendered = () =>
+      [...document.querySelectorAll<HTMLElement>(".cm-lp-rendered")]
+        .map((el) => el.textContent ?? "")
+        .join(" | ");
+    assert(rendered().includes("旧词"), `第一段该已经整块渲染出来，实际：${rendered()}`);
+
+    // 改第一段里的两个字（光标仍在末尾，这一段依旧不是活动块 → 走的还是渲染那条路）
+    const v = view();
+    const at = v.state.doc.toString().indexOf("旧词");
+    v.dispatch({ changes: { from: at, to: at + 2, insert: "新词" } });
+    await wait(300);
+    assert(rendered().includes("新词"), `改了源码后，这一块的预览必须跟着更新，实际：${rendered()}`);
+    assert(!rendered().includes("旧词"), `预览里不该还留着改之前的文字：${rendered()}`);
+
+    /*
+     * 顺带钉住渲染缓存「位置无关」的代价：缓存里存的是固定 sourceOffset: 0 渲染出来的 HTML
+     * （这样在章首多敲一个字，后面每个块才不会全部失效），任务框的 data-task-pos 是唯一会进
+     * HTML 的绝对偏移，取用时才补回去。在任务框**上面**插一行，各块偏移都会变，补错了这里就露馅。
+     */
+    // 光标停在末尾，任务列表那块才会被整块渲染出来（光标所在块永远是源码）
+    const taskDoc = "- [ ] 待办甲\n\n正文乙。\n";
+    resetDoc(taskDoc, taskDoc.length);
+    await wait(300);
+    const taskPos = () => {
+      const box = document.querySelector<HTMLElement>(
+        '.cm-lp-rendered input[type="checkbox"][data-task-pos]',
+      );
+      assert(box, "任务列表应当渲染出带 data-task-pos 的复选框");
+      return Number(box!.dataset.taskPos);
+    };
+    const before = taskPos();
+    const inserted = "插在前面的一行\n";
+    view().dispatch({ changes: { from: 0, insert: inserted } });
+    await wait(300);
+    assert(
+      taskPos() === before + inserted.length,
+      `上面插了 ${inserted.length} 个字符，data-task-pos 应从 ${before} 变成 ${before + inserted.length}，实际 ${taskPos()}`,
+    );
+    resetDoc(DOC, posOf("正文一。"));
+  });
+
   await ck("上下键跨过渲染过的块时，先进入那一段的源码（不整块跳）", () => {
     // 第 3 行是一条会长到软换行的段落的源码；它在即时预览里被渲染成块，默认行为会整块跳过去
     const longDoc = "短句一。\n\n" + "长".repeat(200) + "。\n\n短句二。\n";

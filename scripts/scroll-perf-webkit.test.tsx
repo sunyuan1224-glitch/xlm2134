@@ -22,7 +22,14 @@ import { EditorView } from "@codemirror/view";
 import App from "../src/App";
 import { useStore } from "../src/store";
 import { api, type FileNode } from "../src/api";
-import { blockHint, estimateBlockHeight, readBlockMetrics } from "../src/editor/livePreview";
+import {
+  textUnits,
+  blockHint,
+  estimateBlockHeight,
+  readBlockMetrics,
+  renderCacheSize,
+  renderCacheStats,
+} from "../src/editor/livePreview";
 import "../src/styles.css";
 import "../src/shell.css";
 
@@ -279,18 +286,58 @@ function totals(label: string, scrollHeight: number): string {
  * 打字成本：每个键都会让即时预览重建一次装饰（→ 每个块都会问一次 estimatedHeight），
  * 量一下每键的同步开销，确认给 widget 加估算没有把打字的路径拖慢。
  */
-function typingCost(label: string, n = 40): string {
+/**
+ * 「视觉/排版零变化」检查（源码模式）：逐行高度提示只该影响**没量到**的行的估算，
+ * 已经画出来的行必须还是实测高度。这里直接拿 DOM 比：每一行的实际高度应当等于
+ * 「这一行按字数折成几行 × 行盒」，任何被 widget 撑高的行都会露馅。
+ */
+function renderedLineHeights(label: string): { note: string; mismatch: number } {
+  const host = document.querySelector<HTMLElement>(".editor-host");
+  const m = readBlockMetrics(host);
+  if (!m) return { note: `${label}: 拿不到排版参数`, mismatch: -1 };
+  const lineBox = m.fontSize * m.lineHeight;
+  const perLine = Math.max(1, m.textWidth / m.fontSize);
+  const bad: string[] = [];
+  let checked = 0;
+  for (const el of document.querySelectorAll<HTMLElement>(".cm-line")) {
+    const text = el.textContent ?? "";
+    if (!text.length) continue; // 空行不参与（它的高度就是行盒，另有 geometry 那行看着）
+    const expect = Math.max(1, Math.ceil(textUnits(text) / perLine)) * lineBox;
+    const real = el.getBoundingClientRect().height;
+    checked++;
+    if (Math.abs(real - expect) > 1.5) {
+      bad.push(`${text.length}字 实测${real.toFixed(1)}/应${expect.toFixed(1)}`);
+    }
+  }
+  return {
+    note:
+      `${label}: 抽查 ${checked} 行，实测高度与「字数×行盒」对不上 ${bad.length} 行` +
+      (bad.length ? ` —— ${bad.slice(0, 3).join(" | ")}` : "（widget 没有撑高任何一行）"),
+    mismatch: bad.length,
+  };
+}
+
+/**
+ * 打字成本：每个键都会让即时预览重建一次装饰（→ 每个块都会问一次 estimatedHeight），
+ * 量一下每键的同步开销，确认给 widget 加估算没有把打字的路径拖慢。
+ */
+function typingCost(label: string, n = 40, where: "end" | "middle" = "end"): string {
   const dom = document.querySelector<HTMLElement>(".cm-content");
   const v = dom ? EditorView.findFromDOM(dom) : null;
   if (!v) return `${label}: 拿不到 EditorView`;
   const end = v.state.doc.length;
+  // 章末敲字：后面没有别的块，缓存该全中；章中敲字：后面的块整体位移 ——
+  // 缓存键里带不带块位置，这两种情况的差别会直接暴露在数字上
+  const at = where === "end" ? end : Math.floor(end / 2);
+  const h0 = renderCacheStats.hits;
+  const m0 = renderCacheStats.misses;
   const t0 = performance.now();
   for (let i = 0; i < n; i++) {
-    v.dispatch({ changes: { from: v.state.doc.length, insert: "字" } });
+    v.dispatch({ changes: { from: at + i, insert: "字" } });
   }
   const t1 = performance.now();
   // 把刚敲的字删回去，别影响后面的用例
-  v.dispatch({ changes: { from: end, to: v.state.doc.length, insert: "" } });
+  v.dispatch({ changes: { from: at, to: at + n, insert: "" } });
   // 再量一次「只量排版参数」的开销（缓存生效时应当接近 0）
   const t2 = performance.now();
   for (let i = 0; i < 1000; i++) readBlockMetrics(document.querySelector(".editor-host"));
@@ -302,8 +349,12 @@ function typingCost(label: string, n = 40): string {
   const t4 = performance.now();
   for (let i = 0; i < 5; i++) for (const p of paras) blockHint(p);
   const t5 = performance.now();
+  const hits = renderCacheStats.hits - h0;
+  const misses = renderCacheStats.misses - m0;
+  const rate = hits + misses > 0 ? ((hits / (hits + misses)) * 100).toFixed(1) + "%" : "—";
   return (
-    `${label}: 连敲 ${n} 次平均 ${((t1 - t0) / n).toFixed(2)}ms/次（dispatch → 高度表重建）；` +
+    `${label}（${where === "end" ? "章末" : "章中"}）: 连敲 ${n} 次平均 ${((t1 - t0) / n).toFixed(2)}ms/次；` +
+    `渲染缓存 命中 ${hits} / 未命中 ${misses}（命中率 ${rate}，表内 ${renderCacheSize()} 条）；` +
     `读 1000 次排版参数 ${(t3 - t2).toFixed(2)}ms；` +
     `给 ${paras.length} 个块算估算提示 ${((t5 - t4) / 5).toFixed(2)}ms`
   );
@@ -362,6 +413,7 @@ async function run() {
   send(`NOTE: ${calibration("估算校准/即时预览")}`);
   send(`NOTE: ${totals("对账/即时预览(初始估算)", scroller.scrollHeight)}`);
   send(`NOTE: ${typingCost("打字成本/即时预览")}`);
+  send(`NOTE: ${typingCost("打字成本/即时预览", 40, "middle")}`);
   // 同一份文档切到源码模式再量一次：源码模式没有即时预览装饰，用来判断上面那份打字开销
   // 是不是来自预览块的重建（已知的「改文档 → 整篇块重渲染」路径，与本轮的高度估算无关）
   useStore.setState({ sourceMode: true });
@@ -380,6 +432,8 @@ async function run() {
   const source = await dragSweep(scroller, 100);
   send(`NOTE: ${summary("源码模式", source)}`);
   send(`NOTE: ${geometry("几何/源码模式")}`);
+  const lineCheck = renderedLineHeights("排版校验/源码模式");
+  send(`NOTE: ${lineCheck.note}`);
 
   /*
    * 对照组：换一个文件（Editor 按 path 建 key，会整台重建，高度图也从零开始），
@@ -421,23 +475,17 @@ async function run() {
       );
   };
   /*
-   * 判定分两档，理由写清楚，免得看着像「为了变绿放宽阈值」：
-   *
-   *  - 即时预览（默认写作模式）：整块渲染的块必须**估准**，否则屏幕外的高度被按一行算，
-   *    拖到底的量程能一路长四成。这里要求总高变化 ≤1%，改前是 41%。
-   *  - 源码模式：没有整块 widget，屏幕外全是纯文本行，高度由 CodeMirror 自己的
-   *    heightForGap 估，而那个模型假设「每行只用掉半行字」，中国小说那种一段两三行的
-   *    正文会被结构性地少算折行数。外部只能通过字宽（本仓已按中文字宽校准）影响它，
-   *    再往下压就得自己接管高度表 —— 属于本轮范围外。所以这里只要求「明显优于校准前」，
-   *    改前 27350px（占 26%），改后见实测；这条是**已知残差**，不是达标线。
+   * 判定：两个模式都要求总高变化 ≤5%（用户定的目标；改前分别是 41% 与 16%）。
+   *  - 即时预览：整块渲染的块必须估准（否则屏幕外的高度被按一行算）；
+   *  - 源码模式：逐行的高度提示要让每一行成为独立节点，别再让 CodeMirror 把一大片
+   *    没画出来的行揉成一个 gap 用粗公式估。
    */
   check("即时预览", preview, 0.01);
-  check("源码模式", source, 0.2);
-  if (Math.abs(source.scrollHeightAfter - source.scrollHeightBefore) > source.scrollHeightBefore * 0.01) {
-    send(
-      `NOTE: 源码模式的残余漂移 ${Math.abs(source.scrollHeightAfter - source.scrollHeightBefore)}px 来自 ` +
-        `CodeMirror 对纯文本行的高度估算（heightForGap 假设每行只用半行字），不是整块 widget 的问题；` +
-        `中文校准已把它从 27350px 压到实测值，进一步压缩需要自己接管高度表，属已知限制。`,
+  check("源码模式", source, 0.05);
+  // 「视觉零变化」：画出来的行必须还是实测高度，不能被行高提示的 widget 撑高
+  if (lineCheck.mismatch !== 0) {
+    problems.push(
+      `源码模式：${lineCheck.mismatch} 行的实测高度与「字数×行盒」对不上（行内 widget 改变了排版）`,
     );
   }
 
