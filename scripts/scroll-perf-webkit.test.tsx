@@ -401,6 +401,18 @@ async function run() {
     send("FAIL: 编辑器没有挂载起来，探针跑不了");
     return;
   }
+  /*
+   * 等窗口真的映射出来、CodeMirror 完成第一次测量再报数。
+   * 不然偶发会读到「测量之前」的高度表（那时行高还是默认的 14px，总高只有三万多），
+   * 看起来像估算没生效，其实只是这一帧窗口还没上屏（实测记录到过一次）。
+   * 判据：oracle 的行高已经变成真实行盒（> 20px）。
+   */
+  for (let i = 0; i < 40; i++) {
+    const view = EditorView.findFromDOM(document.querySelector<HTMLElement>(".cm-content")!);
+    const oracle = (view as any)?.viewState?.heightOracle;
+    if (oracle && oracle.lineHeight > 20) break;
+    await wait(50);
+  }
   send(
     `NOTE: 中文文档 ${DOC.length} 字符 / ${DOC.split("\n").length} 行，` +
       `拉丁对照 ${LATIN.length} 字符，滚动区 ${scroller.scrollHeight}px（可视 ${scroller.clientHeight}px）`,
