@@ -26,41 +26,8 @@ export interface ChapterMeta {
   words: number;
 }
 
-export type WorkTab = "plot" | "timeline" | "lore" | "proofread";
-
-/** 工作台持久化的 localStorage 键：展开状态与当前标签页 */
-const WORKBENCH_OPEN_KEY = "mynovel:workbench-open";
 /** 伴读人物是否显示。缺省为显示；「关于」里点应用图标切换 */
 const COMPANION_KEY = "mynovel:companion";
-const WORK_TAB_KEY = "mynovel:work-tab";
-const WORK_TABS: readonly WorkTab[] = ["plot", "timeline", "lore", "proofread"];
-
-/** 读取持久化的工作台展开状态；读不到时默认收起 */
-function loadWorkbenchOpen(): boolean {
-  try {
-    return window.localStorage.getItem(WORKBENCH_OPEN_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-/** 读取持久化的工作台标签页；非法值回落到「伏笔」 */
-function loadWorkTab(): WorkTab {
-  try {
-    const raw = window.localStorage.getItem(WORK_TAB_KEY);
-    return WORK_TABS.includes(raw as WorkTab) ? (raw as WorkTab) : "plot";
-  } catch {
-    return "plot";
-  }
-}
-
-function persistWorkbenchOpen(v: boolean): void {
-  try {
-    window.localStorage.setItem(WORKBENCH_OPEN_KEY, v ? "1" : "0");
-  } catch {
-    /* 隐私模式等场景下 localStorage 不可用：只影响持久化，不影响本次会话 */
-  }
-}
 
 function loadCompanionVisible(): boolean {
   try {
@@ -73,14 +40,6 @@ function loadCompanionVisible(): boolean {
 function persistCompanionVisible(v: boolean): void {
   try {
     window.localStorage.setItem(COMPANION_KEY, v ? "1" : "0");
-  } catch {
-    /* 同上 */
-  }
-}
-
-function persistWorkTab(t: WorkTab): void {
-  try {
-    window.localStorage.setItem(WORK_TAB_KEY, t);
   } catch {
     /* 同上 */
   }
@@ -99,7 +58,6 @@ interface AppState {
   contents: Record<string, string>;
   dirty: Set<string>;
   expanded: Set<string>;
-  workTab: WorkTab;
   chapters: ChapterMeta[];
   /** 卷注册表：工作区相对目录路径（.novel/volumes.json） */
   volumes: string[];
@@ -116,12 +74,6 @@ interface AppState {
   /** 左侧栏当前标签；重复点击只切标签、不折叠侧栏 */
   sidebarTab: SidebarTab;
   sidebarOpen: boolean;
-  /**
-   * 右侧「小说工作台」是否展开。首次使用默认收起（Typora 式正文中心布局里右栏是
-   * 额外信息，不应常驻挤占正文）；用户切换后会记进 localStorage，
-   * 下次打开软件保持上次的展开/收起状态。
-   */
-  workbenchOpen: boolean;
   /** false = 即时预览（Typora 实时预览）；true = 源码模式（显示原始 Markdown） */
   sourceMode: boolean;
   /** 专注模式（F8）：只提亮光标所在段落 */
@@ -137,15 +89,6 @@ interface AppState {
   refresh: () => Promise<boolean>;
   openFile: (path: string) => Promise<void>;
   /**
-   * 跳到正文里的某一段（校对面板的「定位」用）。
-   * 目标不是当前文件时先切过去；编辑器会在自己的文档就位后消费这次请求：
-   * 移光标 + 选中 [from, to) + 滚动到可见 + 聚焦。
-   */
-  revealAt: (path: string, from: number, to: number) => Promise<void>;
-  /** 待跳转请求；编辑器处理完清掉（带 nonce，连续点同一处也能重新触发） */
-  reveal?: { path: string; from: number; to: number; nonce: number } | null;
-  clearReveal: () => void;
-  /**
    * 只把文件内容读进内存（不改 activePath、不标脏、不加标签页）。
    * 供「旁路编辑器」使用（大纲面板的总纲），已加载过则直接返回。
    */
@@ -159,7 +102,6 @@ interface AppState {
   ensureExpanded: (path: string) => void;
   /** 文件/目录被删除后清理内存态：关闭标签、丢弃内容与未保存标记 */
   forgetPaths: (paths: string[]) => void;
-  setWorkTab: (t: WorkTab) => void;
   loadChapters: () => Promise<void>;
   setStatus: (s: string) => void;
   /** 覆盖卷注册表并持久化（新建卷 / 改名 / 删除都会走这里） */
@@ -173,8 +115,6 @@ interface AppState {
   openSidebarTab: (t: SidebarTab) => void;
   setSidebarOpen: (v: boolean) => void;
   toggleSidebar: () => void;
-  setWorkbenchOpen: (v: boolean) => void;
-  toggleWorkbench: () => void;
   /** 稿纸旁的伴读人物。关于对话框里点应用图标切换，记在 localStorage */
   companionVisible: boolean;
   toggleCompanion: () => void;
@@ -289,7 +229,6 @@ export const useStore = create<AppState>((set, get) => ({
   contents: {},
   dirty: new Set(),
   expanded: new Set(),
-  workTab: loadWorkTab(),
   chapters: [],
   volumes: [],
   chapterOrder: {},
@@ -299,7 +238,6 @@ export const useStore = create<AppState>((set, get) => ({
 
   sidebarTab: "files",
   sidebarOpen: true,
-  workbenchOpen: loadWorkbenchOpen(),
   companionVisible: loadCompanionVisible(),
   sourceMode: false,
   focusMode: false,
@@ -434,13 +372,6 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  revealAt: async (path, from, to) => {
-    if (get().activePath !== path) await get().openFile(path);
-    set({ reveal: { path, from, to, nonce: Date.now() } });
-  },
-
-  clearReveal: () => set({ reveal: null }),
-
   openFile: async (path) => {
     const { root, openTabs } = get();
     if (!root) return;
@@ -481,6 +412,8 @@ export const useStore = create<AppState>((set, get) => ({
     // 已经是脏的复用同一个 Set，省掉一次全量复制
     const dirty = st.dirty.has(path) ? st.dirty : new Set(st.dirty).add(path);
     set({ contents, dirty });
+    // 左侧栏的字数要跟着打字变（防抖 + 只重算这一章，见 scheduleChapterWords）
+    scheduleChapterWords(path);
   },
 
   /**
@@ -628,11 +561,6 @@ export const useStore = create<AppState>((set, get) => ({
     set({ openTabs, contents, dirty, activePath });
   },
 
-  setWorkTab: (workTab) => {
-    persistWorkTab(workTab);
-    set({ workTab });
-  },
-
   loadChapters: async () => {
     const { root, files, contents, volumes, chapterOrder } = get();
     if (!root) return;
@@ -709,15 +637,6 @@ export const useStore = create<AppState>((set, get) => ({
   openSidebarTab: (t) => set({ sidebarTab: t, sidebarOpen: true }),
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  setWorkbenchOpen: (v) => {
-    persistWorkbenchOpen(v);
-    set({ workbenchOpen: v });
-  },
-  toggleWorkbench: () =>
-    set((s) => {
-      persistWorkbenchOpen(!s.workbenchOpen);
-      return { workbenchOpen: !s.workbenchOpen };
-    }),
   toggleCompanion: () =>
     set((s) => {
       const next = !s.companionVisible;
@@ -790,4 +709,49 @@ function countQuick(text: string): number {
     } else inWord = false;
   }
   return n;
+}
+
+/*
+ * 正文改动 → 左侧栏那一章的字数跟着变。
+ *
+ * 以前字数只在 loadChapters()（打开工作区 / 手动刷新）时算一次，所以文件树里的数字要
+ * 保存或刷新才更新，打字时看着是「死的」。这里在 setContent 之后补一次重算，但必须：
+ *
+ *   1) 防抖：连打时一秒最多算两次（打字的手感与章节长度无关）；
+ *   2) 只算改动的那一章：长篇里章节多、单章几万字，全量重算会把主线程占死；
+ *   3) 用 countQuick —— 与 loadChapters 同一套算法。两处不一致的话，保存 / 刷新那一刻
+ *      数字会莫名其妙跳一下（例如从 3200 变成 3222）。
+ *
+ * 400ms 的取舍：停顿一下数字就到位，又不会在连续输入时反复算。
+ */
+const WORD_COUNT_DEBOUNCE_MS = 400;
+let wordCountTimer: ReturnType<typeof setTimeout> | null = null;
+/** 最后一次触发重算的章节；防抖窗口内又改了别的章就以最后一章为准（编辑器只有一个活动文件） */
+let wordCountPath: string | null = null;
+
+function scheduleChapterWords(path: string): void {
+  wordCountPath = path;
+  if (wordCountTimer !== null) clearTimeout(wordCountTimer);
+  wordCountTimer = setTimeout(() => {
+    wordCountTimer = null;
+    const p = wordCountPath;
+    wordCountPath = null;
+    if (p !== null) recountChapterWords(p);
+  }, WORD_COUNT_DEBOUNCE_MS);
+}
+
+/** 重算一章的字数；数字没变就不换 chapters 数组，免掉整棵文件树的白重渲染 */
+function recountChapterWords(path: string): void {
+  const st = useStore.getState();
+  const text = st.contents[path];
+  if (text === undefined) return;
+  const i = st.chapters.findIndex((c) => c.path === path);
+  // 不在章列表里（总纲 / 卷纲 / 资料文件）的，左侧树本来就不显示字数
+  if (i < 0) return;
+  const { meta } = parseFrontmatter(text);
+  const words = meta.words ? parseInt(meta.words, 10) : countQuick(text);
+  if (st.chapters[i].words === words) return;
+  const chapters = st.chapters.slice();
+  chapters[i] = { ...chapters[i], words };
+  useStore.setState({ chapters });
 }

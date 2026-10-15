@@ -24,7 +24,6 @@ export const SHORTCUTS: [string, string][] = [
   ["F9", "打字机模式（光标行居中）"],
   ["F11", "全屏"],
   ["Ctrl+Shift+L", "显示 / 折叠左侧栏"],
-  ["Ctrl+Shift+B", "显示 / 收起小说工作台"],
   ["Ctrl+B / Ctrl+I / Ctrl+U", "加粗 / 斜体 / 下划线"],
   ["Alt+Shift+5", "删除线"],
   ["Ctrl+Shift+H", "高亮"],

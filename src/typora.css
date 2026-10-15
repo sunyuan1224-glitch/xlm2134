@@ -44,6 +44,24 @@ html:root {
   padding: 0 0.5rem;
 }
 
+/*
+ * 中文手稿的总高估算校准（.cm-cjk-wrap 由 Editor.tsx 按正文内容挂在 .editor-host 上）。
+ *
+ * 命中的是 CodeMirror 量算字宽时临时插进正文的那行 **探针**（内联 width:99999px，
+ * 内容是一串 ASCII）。它按 ASCII 宽度算「一行放得下多少字」，而中文正文里一个汉字
+ * 约等于两个 ASCII 字符宽 → 屏幕外的总高被估少三成 → 拖滚动条时量程（.cm-gap 垫片）
+ * 一边拖一边变长，条和内容对不上。加半个字距让探针量出的字符宽度 ≈ 1em = 中文字宽。
+ *
+ * 为什么用 [style*="99999px"] 而不是 .cm-line：这个取值只可能命中那行探针，以后
+ * CodeMirror 改了实现，这条规则最多失效（退回原估算），不会波及任何正文行。
+ * 挂在外层 .editor-host 上（而不是编辑器自己那个 div）是因为 CodeMirror 会重写自己
+ * 元素上的 class，而且那要等第一次测量之后才生效 —— 第一次估算才是要校准的那个。
+ * 探针见 scripts/test-scroll-perf.mjs。
+ */
+.editor-host.cm-cjk-wrap .cm-line[style*="99999px"] {
+  letter-spacing: 0.5em;
+}
+
 
 /*
  * 字号一律用 em（相对编辑器正文字号），不要用 rem。

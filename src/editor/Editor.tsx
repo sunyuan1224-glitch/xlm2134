@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Compartment, EditorState, Prec, type Extension } from "@codemirror/state";
 import {
   EditorView,
@@ -46,6 +46,31 @@ interface Props {
   }) => void;
 }
 
+/**
+ * 这份手稿是不是以中文为主（汉字多于拉丁字母）。
+ *
+ * 只用来决定要不要给 CodeMirror 的总高估算挂中文校准（规则在 src/typora.css 的
+ * `.cm-cjk-wrap`）—— 那是「拖右侧滚动条，条和内容对不上」的根因：
+ *
+ *   CodeMirror 只测量已经画出来的行，屏幕外用「一行放得下多少字」估总高，而这个字宽是它
+ *   临时插进正文的一行 ASCII 样本量出来的（"abc def ghi jkl mno pqr stu"）。中文里一个汉字
+ *   约等于两个 ASCII 字符宽，于是屏幕外几乎不被算作折行、总高估少三成。这份估算会落成
+ *   `.cm-gap` 垫片，就是浏览器滚动条的量程：往下拖时量程一路变长，滑块与内容越拖越对不上
+ *   （实测 8 万字章节 83655px → 118020px，帧间隔却一直是正常的 16.4ms）。
+ *
+ * 纯英文稿件的字宽本来就是它量到的那个值，套上中文校准反而会估过头，所以只认
+ * 「汉字比拉丁字母多」。只看前 2 万字：开文件时粗判一次就够，正文比例不会写几段就翻过来。
+ */
+function looksChinese(text: string): boolean {
+  let cjk = 0;
+  let latin = 0;
+  for (const ch of text.slice(0, 20000)) {
+    if (/[\u3400-\u4dbf\u4e00-\u9fff]/.test(ch)) cjk++;
+    else if (/[A-Za-z]/.test(ch)) latin++;
+  }
+  return cjk > latin;
+}
+
 export function Editor({
   path,
   sourceMode = false, focusMode = false, typewriterMode = false, onLinkClick, onHeadingClick,
@@ -65,6 +90,13 @@ export function Editor({
   /** 编辑器自己通过 onChange 回显给 store 的正文：用来区分外部改写与自身回显。 */
   const echoRef = useRef<string | null>(null);
   const mode = useRef(new Compartment());
+  /**
+   * 中文手稿才挂总高估算校准。按 path 记忆：判定只看开文件那一刻的正文，
+   * 打字过程中不需要重算（比例不会翻），也免得每敲一个字都扫一遍正文。
+   * 类挂在 .editor-host 上（React 渲染时就带上，早于 CodeMirror 建视图与第一次测量 ——
+   * 挂到编辑器元素上会晚一帧，第一次估算就已经用错了字宽）。
+   */
+  const cjkWrap = useMemo(() => looksChinese(initialContent), [path]);
   const cbs = useRef({ typewriterMode, onLinkClick, onHeadingClick, onChange, onSave, onCursor, onSelectionChange, contextMenu });
   cbs.current = { typewriterMode, onLinkClick, onHeadingClick, onChange, onSave, onCursor, onSelectionChange, contextMenu };
 
@@ -270,32 +302,6 @@ export function Editor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typewriterMode]);
 
-  /*
-   * 消费 store 的「跳到某一段」请求（校对面板点「定位」时发出）。
-   *
-   * 等文档就位再动手：切文件时本组件会重建 state，若在旧文档上 dispatch，
-   * 偏移量会落到错误的位置。所以这里同时盯 path / initialContent，
-   * 文档对了才跳，之后再清掉请求（带 nonce，连点同一处也有效）。
-   */
-  const reveal = useStore((s) => s.reveal);
-  useEffect(() => {
-    const view = viewRef.current;
-    if (!view || !reveal) return;
-    if (useStore.getState().activePath !== reveal.path) return;
-    if (view.state.doc.toString() !== initialContent) return;
-    whenImeIdle(() => {
-      const v = viewRef.current;
-      if (!v) return;
-      const max = v.state.doc.length;
-      const from = Math.max(0, Math.min(reveal.from, max));
-      const to = Math.max(from, Math.min(reveal.to, max));
-      v.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
-      v.focus();
-      useStore.getState().clearReveal();
-    }, "reveal");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reveal, path, initialContent]);
-
   // 外部内容变化时同步（例如从别处加载）
   useEffect(() => {
     const view = viewRef.current;
@@ -336,5 +342,10 @@ export function Editor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialContent]);
 
-  return <div className={`editor-host${sourceMode ? " cm-source-mode" : ""}${focusMode ? " cm-focus" : ""}${typewriterMode ? " cm-typewriter" : ""}`} ref={hostRef} />;
+  return (
+    <div
+      className={`editor-host${sourceMode ? " cm-source-mode" : ""}${focusMode ? " cm-focus" : ""}${typewriterMode ? " cm-typewriter" : ""}${cjkWrap ? " cm-cjk-wrap" : ""}`}
+      ref={hostRef}
+    />
+  );
 }

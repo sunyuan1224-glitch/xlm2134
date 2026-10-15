@@ -20,7 +20,6 @@ async function run() {
   // Isolated in-memory fixture: never read or write a real workspace.
   useStore.setState({
   root: "/theme-fixture",
-    workbenchOpen: false,
     files: ["第一章.md"],
     tree: [{ path: "第一章.md", name: "第一章.md", is_dir: false, children: [] }],
     openTabs: ["第一章.md"],
@@ -218,22 +217,13 @@ async function run() {
   await wait();
   viewMenu.click();
   await wait();
-  click(".menu-item", "小说工作台（右栏）");
+  // 右侧「小说工作台」整块已移除：视图菜单里不该再留下这个入口（右缘为空的断言在上面）
+  assert(
+    ![...document.querySelectorAll(".menu-item")].some((i) => i.textContent?.includes("工作台")),
+    "视图菜单里不该再有「小说工作台」入口",
+  );
+  viewMenu.click(); // 收起，交回下面的流程
   await wait();
-  if (!useStore.getState().workbenchOpen) {
-    viewMenu.click();
-    await wait();
-    click(".menu-item", "小说工作台（右栏）");
-    await wait();
-  }
-  assert(document.querySelector(".pane-right"), "View menu must open workbench");
-  send("SHOT: workbench");
-  await wait();
-  viewMenu.click();
-  await wait();
-  click(".menu-item.on", "小说工作台（右栏）");
-  await wait();
-  assert(!document.querySelector(".pane-right, .pane-handle-right"), "Closing workbench must leave no placeholder");
   click(".menu-root", "主题");
   await wait();
   assert(
@@ -328,6 +318,6 @@ async function run() {
 
   send("SHOT: settings");
   await wait();
-  send("PASS: pink-white theme, default empty right edge, source/workbench menus, typography dialog");
+  send("PASS: pink-white theme, default empty right edge, source menu, typography dialog");
 }
 run().catch((error) => send(`FAIL: ${error.message ?? error}\n${error.stack ?? ""}`));

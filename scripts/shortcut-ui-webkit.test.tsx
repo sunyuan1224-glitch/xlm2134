@@ -24,7 +24,6 @@ import { EditorView } from "@codemirror/view";
 import { Transaction } from "@codemirror/state";
 import App from "../src/App";
 import { useStore } from "../src/store";
-import { currentWork } from "../src/lib/sidecar";
 import { api, type FileNode } from "../src/api";
 import { SHORTCUTS } from "../src/components/HelpDialog";
 import capabilities from "../src-tauri/capabilities/default.json";
@@ -401,7 +400,6 @@ async function run() {
     chapterOrder: {},
     sidebarTab: "files",
     sidebarOpen: true,
-    workbenchOpen: false,
     sourceMode: false,
     focusMode: false,
     typewriterMode: false,
@@ -647,40 +645,6 @@ async function run() {
     resetDoc(DOC, 0);
   });
 
-  await ck("校对面板「定位」跳到问题处并选中（以前是摆设）", async () => {
-    // 中文语境里的半角逗号一定命中校对规则
-    resetDoc("他说,好。\n", 0);
-    useStore.setState({ workbenchOpen: true, workTab: "proofread" });
-    await wait(700);
-    const btn = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) =>
-      (b.textContent ?? "").includes("定位首个"),
-    );
-    assert(btn, `校对面板里应该有「定位首个」按钮，实际按钮：${[...document.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim()).slice(0, 12).join(" | ")}`);
-    btn!.click();
-    await wait(500);
-    const sel = view().state.selection.main;
-    const picked = view().state.sliceDoc(sel.from, sel.to);
-    assert(picked.length > 0, `点「定位」后编辑器里应该有选区，实际没有`);
-    assert(picked.includes(","), `选区应落在半角逗号上，实际选中了 ${JSON.stringify(picked)}`);
-    useStore.setState({ workbenchOpen: false, workTab: "plot" });
-    resetDoc(DOC, 0);
-  });
-
-  await ck("侧车（伏笔 / 时间线 / 设定）跟着书文件夹走，不落在工作区根", () => {
-    // 书下的章 → work 取第一段（书），侧车落在 <书>/.novel/
-    useStore.setState({ root: ROOT, activePath: "我见/序章.md", files: ["我见/序章.md"] });
-    assert(
-      currentWork() === "我见",
-      `书下的章应把侧车放进书目录，实际 work=${JSON.stringify(currentWork())}`,
-    );
-    // 章直接放在工作区根 → 侧车落在根的 .novel/（这是设计上的兜底）
-    useStore.setState({ activePath: "序章.md", files: ["序章.md"] });
-    assert(currentWork() === "", `根级章应落在工作区根，实际 work=${JSON.stringify(currentWork())}`);
-    // 还原 fixture
-    useStore.setState({ activePath: C1, files: [C1] });
-    assert(currentWork() === BOOK, `还原后应回到 fixture 的书，实际 ${JSON.stringify(currentWork())}`);
-  });
-
   await ck("全书字数跟着当前章的改动即时更新", async () => {
     const total = () => {
       const item = [...document.querySelectorAll<HTMLElement>(".sb-item")]
@@ -699,6 +663,49 @@ async function run() {
     await wait(400);
     const after = total();
     assert(after > before, `全书字数应随当前章即时增加（${before} → ${after}）`);
+    resetDoc(DOC, 0);
+  });
+
+  await ck("左侧栏字数即时更新：打完字等防抖过去，文件树里那一章的字数跟着变", async () => {
+    // 文件树里那一章的字数（.tree-words 只对单词有字数，不加千分位符）
+    const treeWords = () => {
+      const el = document.querySelector<HTMLElement>(".tree-words");
+      assert(el, "左侧文件树里应显示章节字数（.tree-words）");
+      return Number((el!.textContent ?? "").replace(/,/g, ""));
+    };
+    const type = (text: string) => {
+      const v = view();
+      v.dispatch({ changes: { from: v.state.doc.length, insert: text } });
+    };
+
+    resetDoc("正文一。\n\n正文二。\n", 0);
+    // 先敲一个字并等过防抖：这样 after 拿到的是 store 里被重算过的真值，
+    // 不再是 fixture 里那个写死的初始值（否则「+3」这种断言没有意义）。
+    type("甲");
+    await wait(600);
+    const before = treeWords();
+    assert(before > 0, `初始字数应大于 0，实际 ${before}`);
+
+    // 再敲 3 个汉字：防抖窗口内数字不该动，窗口过去后应当正好 +3
+    type("乙丙丁");
+    await wait(60);
+    assert(
+      treeWords() === before,
+      `防抖窗口（400ms）内不该重算，但字数已经从 ${before} 变成了 ${treeWords()}`,
+    );
+    await wait(600);
+    assert(
+      treeWords() === before + 3,
+      `打字后左侧栏该章字数应 +3：期待 ${before + 3}，实际 ${treeWords()}`,
+    );
+    // 状态栏的「本章」与左侧栏用的是两套算法，这里顺带确认两边一致（同一份正文同一个数）
+    const sbChapter = [...document.querySelectorAll<HTMLElement>(".sb-item")]
+      .map((e) => e.textContent ?? "")
+      .find((t) => t.startsWith("本章"));
+    assert(
+      Number((sbChapter?.match(/([\d,]+)/) ?? [])[1]?.replace(/,/g, "") ?? -1) === before + 3,
+      `左侧栏与状态栏「本章」应一致，状态栏是 ${JSON.stringify(sbChapter)}`,
+    );
     resetDoc(DOC, 0);
   });
 
@@ -873,15 +880,6 @@ async function run() {
     assert(useStore.getState().sidebarOpen === before, "再按一次没有切回来");
   });
 
-  await ck("Ctrl+Shift+B → 显示 / 收起小说工作台", async () => {
-    const before = useStore.getState().workbenchOpen;
-    press("Ctrl+Shift+B");
-    await wait(60);
-    assert(useStore.getState().workbenchOpen === !before, "Ctrl+Shift+B 没有切换 workbenchOpen");
-    press("Ctrl+Shift+B");
-    await wait(60);
-    assert(useStore.getState().workbenchOpen === before, "再按一次没有切回来");
-  });
 
   /* ---------------- 编辑 / 文件 / 窗口类 ---------------- */
 
@@ -1089,7 +1087,6 @@ const COVERED = [
   "F9",
   "F11",
   "Ctrl+Shift+L",
-  "Ctrl+Shift+B",
     "Ctrl+B",
     "Ctrl+I",
     "Ctrl+U",

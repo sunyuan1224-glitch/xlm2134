@@ -1,5 +1,5 @@
 /*
- * 应用外壳：Typora 式「顶部菜单栏 + 左侧文件/大纲/搜索 + 居中正文 + 可召回右栏」。
+ * 应用外壳：Typora 式「顶部菜单栏 + 左侧文件/大纲/搜索 + 居中正文」。
  *
  * 面向小说写作：正文只保留真正会用的格式（加粗/斜体/下划线/删除线/链接/引用/列表），
  * 公式、表格、代码高亮、脚注、任务框、多级标题等通用编辑器功能已按需精简掉。
@@ -8,7 +8,6 @@
  *  - 顶部是菜单栏（文件/编辑/段落/格式/视图/主题/帮助）；
  *  - 左侧栏是「文件 / 大纲」两个标签：「大纲」标签是工作区的纲要导航树
  *    （书 → 卷 → 章），点一行在正文区打开编辑；
- *  - 右侧「小说工作台」默认收起，避免挤占正文，从左上视图菜单打开（伏笔/时间线/设定/校对）；
  *  - 源码模式、专注模式、打字机模式、浮动工具栏、沉浸写作。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -21,7 +20,6 @@ import { useStore } from "./store";
 import { api, isDesktop } from "./api";
 import { TabBar } from "./components/TabBar";
 import { StatusBar } from "./components/StatusBar";
-import { Workbench, MarkForeshadowDialog } from "./components/Workbench";
 import { Editor } from "./editor/Editor";
 import { PaperCompanion } from "./components/PaperCompanion";
 import { splitCurrent, createNextChapter } from "./lib/chapterOps";
@@ -109,8 +107,6 @@ export default function App() {
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const sidebarTab = useStore((s) => s.sidebarTab);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
-  const workbenchOpen = useStore((s) => s.workbenchOpen);
-  const toggleWorkbench = useStore((s) => s.toggleWorkbench);
   const sourceMode = useStore((s) => s.sourceMode);
   const toggleSourceMode = useStore((s) => s.toggleSourceMode);
   const focusMode = useStore((s) => s.focusMode);
@@ -124,14 +120,11 @@ export default function App() {
   const [menu, setMenu] = useState<
     null | { x: number; y: number; sel: { from: number; to: number; text: string }; pos: number }
   >(null);
-  const [markFs, setMarkFs] = useState<{ line: number; text: string } | null>(null);
   const [cursor, setCursor] = useState({ line: 1, col: 1, selLen: 0 });
   const [selection, setSelection] = useState<{ from: number; to: number; text: string } | null>(null);
   const [leftWidth, setLeftWidth] = useState(272);
   /** 拖拽开始时的宽度：每次以它为基准算绝对宽度，避免累加导致越拖越快 */
   const leftDragBase = useRef(272);
-  const rightDragBase = useRef(340);
-  const [rightWidth, setRightWidth] = useState(340);
   const [immersive, setImmersive] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -212,11 +205,6 @@ export default function App() {
       if (mod && e.shiftKey && key === "l") {
         e.preventDefault();
         st.toggleSidebar();
-        return;
-      }
-      if (mod && e.shiftKey && key === "b") {
-        e.preventDefault();
-        st.toggleWorkbench();
         return;
       }
       if (mod && e.shiftKey && (e.key === "=" || e.key === "+")) {
@@ -799,12 +787,6 @@ export default function App() {
         { title: "面板" },
         { label: "左侧栏", shortcut: "Ctrl+Shift+L", checked: sidebarOpen, onClick: () => toggleSidebar() },
         { label: "工作区搜索", checked: sidebarOpen && sidebarTab === "search", onClick: () => useStore.getState().openSidebarTab("search") },
-        {
-          label: "小说工作台（右栏）",
-          shortcut: "Ctrl+Shift+B",
-          checked: workbenchOpen,
-          onClick: () => toggleWorkbench(),
-        },
         "separator",
         { title: "窗口" },
         // keepOpen：连点调字号时菜单不关，方便一直按
@@ -990,21 +972,6 @@ export default function App() {
           </div>
         </div>
 
-        {workbenchOpen && (
-          <>
-            <Splitter
-              onDragStart={() => {
-                rightDragBase.current = rightWidth;
-              }}
-              onDrag={(dx) =>
-                setRightWidth(Math.max(240, Math.min(640, rightDragBase.current - dx)))
-              }
-            />
-            <div className="pane pane-right" style={{ width: rightWidth }}>
-              <Workbench />
-            </div>
-          </>
-        )}
       </div>
 
       <StatusBar cursor={cursor} />
@@ -1015,14 +982,6 @@ export default function App() {
           y={menu.y}
           onClose={() => setMenu(null)}
           items={[
-            {
-              key: "mark-foreshadow",
-              label: "标注为伏笔",
-              disabled: !hasSelection,
-              onClick: () => {
-                setMarkFs({ line: cursor.line, text: menu.sel.text });
-              },
-            },
             {
               key: "copy",
               label: "复制",
@@ -1047,15 +1006,6 @@ export default function App() {
               },
             },
           ]}
-        />
-      )}
-
-      {markFs && activePath && (
-        <MarkForeshadowDialog
-          path={activePath}
-          line={markFs.line}
-          text={markFs.text}
-          onClose={() => setMarkFs(null)}
         />
       )}
 
