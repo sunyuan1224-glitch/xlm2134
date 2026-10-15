@@ -94,7 +94,7 @@ function isWide(ch: string): boolean {
   );
 }
 
-function widthUnits(raw: string): number {
+export function textUnits(raw: string): number {
   let units = 0;
   for (const ch of raw) {
     if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") continue;
@@ -114,13 +114,30 @@ export interface BlockHint {
 
 export function blockHint(raw: string): BlockHint {
   const head = /^(#{1,6})[ \t]/.exec(raw);
-  if (head) return { units: widthUnits(raw), heading: head[1].length, codeLines: 0 };
+  if (head) return { units: textUnits(raw), heading: head[1].length, codeLines: 0 };
   if (/^```/.test(raw)) {
     // 围栏代码块不折行（pre code 是 white-space: pre），行数就是源码行数
     const lines = raw.split("\n");
     return { units: 0, heading: 0, codeLines: Math.max(1, lines.length - 2) };
   }
-  return { units: widthUnits(raw), heading: 0, codeLines: 0 };
+  return { units: textUnits(raw), heading: 0, codeLines: 0 };
+}
+
+/** 这段文字按当前排版会折成几行显示（至少 1 行） */
+function wrapLines(units: number, m: BlockMetrics): number {
+  return Math.max(1, Math.ceil(units / Math.max(1, m.textWidth / m.fontSize)));
+}
+
+/**
+ * **一行源码文本**（.cm-line 里那一行，units = 它的字宽数）渲染/折行后大概多高。
+ *
+ * 源码模式的屏幕外文本行用这个数（见 lineHeightHints）：CodeMirror 自己估整段时走
+ * heightForGap，那条公式是「行数 + 估算折行数」，对中文段落成段地少算折行；而逐行的
+ * heightForLine 又用的是 length/lineLength 的粗近似。这里按「这一行的字宽数 ÷ 一行放得下
+ * 几个汉字」直接算折行数，与渲染块用的是同一套度量。
+ */
+export function estimateLineHeight(units: number, m: BlockMetrics): number {
+  return wrapLines(units, m) * m.fontSize * m.lineHeight;
 }
 
 /**
@@ -143,10 +160,8 @@ export function estimateBlockHeight(hint: BlockHint, m: BlockMetrics): number {
     const box = m.fontSize * 0.88 * m.lineHeight;
     return hint.codeLines * box + 1.2 * m.rem + 2;
   }
-  const perLine = Math.max(1, m.textWidth / m.fontSize);
-  const lines = Math.max(1, Math.ceil(hint.units / perLine));
   // 故意不取整：整块渲染的块成百上千，每块舍掉 0.3px 叠起来就是几百 px 的量程漂移
-  return lines * lineBox + 0.9 * m.rem;
+  return wrapLines(hint.units, m) * lineBox + 0.9 * m.rem;
 }
 
 /*

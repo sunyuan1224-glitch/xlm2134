@@ -14,6 +14,7 @@ import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { GFM } from "@lezer/markdown";
 import { markdown } from "@codemirror/lang-markdown";
 import { isInCode, livePreview, readBlockMetrics } from "./livePreview";
+import { lineHeightHints } from "./lineHeightHints";
 import { installImeGuard, planExternalSync, type ImeGuard } from "./ime";
 import { listKeys } from "./listKeys";
 import { arrowKeys } from "./arrowKeys";
@@ -104,7 +105,11 @@ export function Editor({
     syntaxHighlighting(source ? sourceHighlightStyle : highlightStyle),
     // 源码模式只看原文，所以即时预览与行内装饰都只挂在非源码模式
     ...(source
-      ? []
+      ? [
+          // 源码模式没有整块 widget，屏幕外全是纯文本行：逐行给高度提示，
+          // 否则 CodeMirror 会把一大片没画出来的行揉成一个 gap 用粗公式估（实测漂 16%）
+          lineHeightHints(() => readBlockMetrics(hostRef.current)),
+        ]
       : [
           livePreview({
             onLink: (href, mod) => cbs.current.onLinkClick?.(href, mod),
