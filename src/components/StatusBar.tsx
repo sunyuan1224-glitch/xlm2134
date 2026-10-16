@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { countWords, formatNumber, type CountMode } from "../lib/wordcount";
-import { noteTotalWords } from "../lib/writingStats";
 
 export function StatusBar({ cursor }: { cursor: { line: number; col: number; selLen: number } }) {
   const activePath = useStore((s) => s.activePath);
@@ -14,24 +13,18 @@ export function StatusBar({ cursor }: { cursor: { line: number; col: number; sel
 
   const words = useDeferredCount(content, mode);
   /*
-   * 全书字数 = 其他章已统计好的旧值 + **当前章的实时字数**。
+   * 全书字数 = 各章已算好的字数之和，与左侧文件树逐字一致（中文按字、西文按词）。
    *
-   * 当前章那部分直接复用上面为「本章」算出来的 words，不额外扫一遍文稿，所以
-   * 全书会跟着打字即时更新（滞后一帧，与本章同步），代价为零。
-   * 其他章没法实时（内容根本没加载进来），仍用打开 / 保存时记下的值。
+   * 这里**不掺当前章的实时字数**。以前为了让全书跟着打字即时更新，当前章那份是拿上面
+   * 这个 words 顶替的，于是它成了个混合数：words 随显示模式走（点成「字符」就按字符算），
+   * 其他章却还是按字数的旧值 —— 全书写着「字」而数字在两种口径之间跳。而且切章节那一帧
+   * words 还是上一章的值（滞后一帧），全书会先虚高再落回来。「今日已写」正是被这个数
+   * 喂出来的，于是界面一翻，统计就凭空涨（见 store 的 feedBookWords）。
+   *
+   * 全书跟着文件树那份章节字数走（正文改动后 100ms 节流一收，连打时数字一路往上爬）。
+   * 它是「快照之和」，不是每敲一键都动 —— 要每键都动的数字，看左边那个「本章」。
    */
-  const total = chapters.reduce(
-    (sum, c) => sum + (activePath && c.path === activePath ? words : c.words),
-    0,
-  );
-
-  /*
-   * 把全书字数喂给写作统计（挂件气泡里的「今日已写」就是它的净增累加）。
-   * 这里是最省事的接缝：全书字数本来就在这一行算好了，统计那边不必再扫一遍文稿。
-   */
-  useEffect(() => {
-    noteTotalWords(total, root);
-  }, [total, root]);
+  const total = chapters.reduce((sum, c) => sum + c.words, 0);
 
   const cycle = () => {
     const order: CountMode[] = ["cjk-word", "char", "paragraph"];
@@ -53,10 +46,12 @@ export function StatusBar({ cursor }: { cursor: { line: number; col: number; sel
             选区 {cursor.selLen}
           </span>
         )}
-        <span className="sb-item sb-click" onClick={cycle} title="点击切换统计模式">
+        <span className="sb-item sb-click" onClick={cycle} title="点击切换「本章」的统计模式">
           本章 {formatNumber(words)} · {modeLabel}
         </span>
-        <span className="sb-item">全书 {formatNumber(total)}</span>
+        <span className="sb-item" title="全书字数：各章之和（中文按字、西文按词，与左侧文件树同口径）">
+          全书 {formatNumber(total)}
+        </span>
         <span className={"sb-item " + (dirty.size > 0 ? "sb-dirty" : "")}>
           {dirty.size > 0 ? "● " + dirty.size + " 未保存" : status}
         </span>

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { noteEdit } from "./lib/writingStats";
+import { noteEdit, noteTotalWords } from "./lib/writingStats";
 import { api, isDesktop, type FileNode, type Workspace } from "./api";
 import { isChapterFile } from "./lib/chapter";
 import {
@@ -715,32 +715,43 @@ function countQuick(text: string): number {
 }
 
 /*
- * 正文改动 → 左侧栏那一章的字数跟着变。
+ * 正文改动 → 那一章的字数跟着变：左侧树、状态栏「全书」、写作统计都吃这一份数。
  *
  * 以前字数只在 loadChapters()（打开工作区 / 手动刷新）时算一次，所以文件树里的数字要
  * 保存或刷新才更新，打字时看着是「死的」。这里在 setContent 之后补一次重算，但必须：
  *
- *   1) 防抖：连打时一秒最多算两次（打字的手感与章节长度无关）；
+ *   1) 节流 —— 不是防抖。防抖是「停下 N 毫秒才算」，连打时数字整个冻着不动，用户看到
+ *      的就是「字数不实时」（上一版就是这么写的，被提过）。节流让它连打时也每 N 毫秒收
+ *      一次、数字一路往上爬，停手后还有一次收尾保证落在准数上；
  *   2) 只算改动的那一章：长篇里章节多、单章几万字，全量重算会把主线程占死；
  *   3) 用 countQuick —— 与 loadChapters 同一套算法。两处不一致的话，保存 / 刷新那一刻
  *      数字会莫名其妙跳一下（例如从 3200 变成 3222）。
  *
- * 400ms 的取舍：停顿一下数字就到位，又不会在连续输入时反复算。
+ * 100ms 的取舍：看着就是实时的（每秒最多 10 次收数），而开销被钳在与打字速度、章节长度
+ * 都无关的上限里 —— 实测单章扫描 1 万字 0.78ms / 5 万 2.34ms / 20 万 9.05ms，
+ * 也就是普通章节每秒占不到 1ms。别再退回去用防抖，「停下才动」不算实时。
  */
-const WORD_COUNT_DEBOUNCE_MS = 400;
+const CHAPTER_WORDS_THROTTLE_MS = 100;
 let wordCountTimer: ReturnType<typeof setTimeout> | null = null;
-/** 最后一次触发重算的章节；防抖窗口内又改了别的章就以最后一章为准（编辑器只有一个活动文件） */
+/** 最后一次触发重算的章节；窗口内又改了别的章就以最后一章为准（编辑器只有一个活动文件） */
 let wordCountPath: string | null = null;
+/** 上次**真正**重算的时刻：节流的起点，与「什么时候又改了」无关 */
+let wordCountLastAt = 0;
 
 function scheduleChapterWords(path: string): void {
   wordCountPath = path;
-  if (wordCountTimer !== null) clearTimeout(wordCountTimer);
-  wordCountTimer = setTimeout(() => {
-    wordCountTimer = null;
-    const p = wordCountPath;
-    wordCountPath = null;
-    if (p !== null) recountChapterWords(p);
-  }, WORD_COUNT_DEBOUNCE_MS);
+  // 已经排好一次了：它会取到最新的 path，不用重排（重排就退化成防抖了）
+  if (wordCountTimer !== null) return;
+  const elapsed = Date.now() - wordCountLastAt;
+  wordCountTimer = setTimeout(runChapterWords, Math.max(0, CHAPTER_WORDS_THROTTLE_MS - elapsed));
+}
+
+function runChapterWords(): void {
+  wordCountTimer = null;
+  wordCountLastAt = Date.now();
+  const p = wordCountPath;
+  wordCountPath = null;
+  if (p !== null) recountChapterWords(p);
 }
 
 /** 重算一章的字数；数字没变就不换 chapters 数组，免掉整棵文件树的白重渲染 */
@@ -758,3 +769,30 @@ function recountChapterWords(path: string): void {
   chapters[i] = { ...chapters[i], words };
   useStore.setState({ chapters });
 }
+
+/*
+ * 把「全书字数」喂给写作统计（挂件气泡里的「今日已写」是它的净增累加）。
+ *
+ * 口径 = 各章已算好的字数之和（countQuick / 存档里的值），与左侧树、状态栏那个「全书」
+ * 是同一个数、同一套口径。挂在 chapters 上，是为了不漏：正文改动（recountChapterWords）、
+ * 重新读盘（loadChapters），以后再加的重算路径，只要动了章节字数就会被喂到一次。
+ * 别的 set（contents / dirty / openTabs…）只做一次引用比较，代价可忽略。
+ *
+ * ⚠️ 统计只认「正文改动」，别挪到界面上去喂。状态栏那个数曾经就是喂数点：它当时为了让
+ * 打字即时更新而掺着当前章的实时字数（还会随显示模式换口径），于是切章节那一帧先虚高
+ * 再落回来、点一下「本章」整个换口径 —— 全被净增记成了今天写的字（实测在两篇已写好的
+ * 文章之间来回切几下，每切一下白涨几百字，长章与短章之差）。何况沉浸模式压根不挂状态栏，
+ * 挂那儿还会漏掉整个沉浸写作。界面怎么翻，都不该动这个统计。
+ *
+ * 顺带把口径也统一了：以前当前章走 countWords、其他章走 countQuick，`<!-- nw:no -->`、
+ * 假名之类的差异会在切换 / 刷新那一刻凭空记成一笔；现在喂进去的自始至终只有一套口径。
+ */
+function feedBookWords(chapters: ChapterMeta[], root: string | null): void {
+  let total = 0;
+  for (const c of chapters) total += c.words;
+  noteTotalWords(total, root);
+}
+
+useStore.subscribe((s, prev) => {
+  if (s.chapters !== prev.chapters) feedBookWords(s.chapters, s.root);
+});

@@ -645,7 +645,12 @@ async function run() {
     resetDoc(DOC, 0);
   });
 
-  await ck("全书字数跟着当前章的改动即时更新", async () => {
+  /*
+   * 全书 = 各章之和，与文件树同一份字数（正文改动后 100ms 节流一收；以前它掺着当前章的
+   * 实时字数，于是会跟显示模式换口径、切章节还会虚一下 —— 那正是「今日已写」被喂乱的来源）。
+   * 它不是「一敲就动」，所以这里等的是一个收数周期，而不是等一次停顿。
+   */
+  await ck("全书字数跟着当前章的改动更新（等一次 100ms 的收数）", async () => {
     const total = () => {
       const item = [...document.querySelectorAll<HTMLElement>(".sb-item")]
         .map((e) => e.textContent ?? "")
@@ -653,20 +658,22 @@ async function run() {
       assert(item, "状态栏里应有「全书 N」");
       return Number((item!.match(/([\d,]+)/) ?? [])[1]?.replace(/,/g, "") ?? -1);
     };
+    // 一个收数周期 100ms，留到 300ms：等的是节流计时器 + 一次 React 重渲染
+    const afterThrottle = () => wait(300);
     const base = "正文一。\n\n正文二。\n\n正文三。\n";
     resetDoc(base, 0);
-    await wait(400);
+    await afterThrottle();
     const before = total();
     assert(before > 0, `全书字数应大于 0，实际 ${before}`);
 
     resetDoc(base + "\n又添了一段新内容，用来验证全书字数会跟着涨。\n", 0);
-    await wait(400);
+    await afterThrottle();
     const after = total();
-    assert(after > before, `全书字数应随当前章即时增加（${before} → ${after}）`);
+    assert(after > before, `全书字数应随当前章的字数重算而增加（${before} → ${after}）`);
     resetDoc(DOC, 0);
   });
 
-  await ck("左侧栏字数即时更新：打完字等防抖过去，文件树里那一章的字数跟着变", async () => {
+  await ck("左侧栏字数实时跟着打字走：连打时一路爬，用不着停下来等", async () => {
     // 文件树里那一章的字数（.tree-words 只对单词有字数，不加千分位符）
     const treeWords = () => {
       const el = document.querySelector<HTMLElement>(".tree-words");
@@ -677,33 +684,43 @@ async function run() {
       const v = view();
       v.dispatch({ changes: { from: v.state.doc.length, insert: text } });
     };
+    /** 一个收数周期（store 里 100ms 节流）+ 一次 React 重渲染的余量 */
+    const afterTick = () => wait(300);
 
     resetDoc("正文一。\n\n正文二。\n", 0);
-    // 先敲一个字并等过防抖：这样 after 拿到的是 store 里被重算过的真值，
+    // 先敲一个字并等一个收数周期：这样 before 拿到的是 store 里被重算过的真值，
     // 不再是 fixture 里那个写死的初始值（否则「+3」这种断言没有意义）。
     type("甲");
-    await wait(600);
+    await afterTick();
     const before = treeWords();
     assert(before > 0, `初始字数应大于 0，实际 ${before}`);
 
-    // 再敲 3 个汉字：防抖窗口内数字不该动，窗口过去后应当正好 +3
+    // 敲 3 个汉字：一个收数周期后就该 +3 —— 不是「停手 400ms 才算」
     type("乙丙丁");
-    await wait(60);
-    assert(
-      treeWords() === before,
-      `防抖窗口（400ms）内不该重算，但字数已经从 ${before} 变成了 ${treeWords()}`,
-    );
-    await wait(600);
+    await afterTick();
     assert(
       treeWords() === before + 3,
-      `打字后左侧栏该章字数应 +3：期待 ${before + 3}，实际 ${treeWords()}`,
+      `打字后一个收数周期内左侧栏就该 +3：期待 ${before + 3}，实际 ${treeWords()}`,
     );
+
+    // 连打：每下只隔 120ms（都没到「停顿」），数字仍然一路跟着走。
+    // 这一条专门盯着「防抖」那种「停下才动」的写法 —— 那样这里会一直卡在 +3。
+    for (const ch of "己庚辛") {
+      type(ch);
+      await wait(120);
+    }
+    await afterTick();
+    assert(
+      treeWords() === before + 6,
+      `连打时数字应当跟着爬（不该等停手）：期待 ${before + 6}，实际 ${treeWords()}`,
+    );
+
     // 状态栏的「本章」与左侧栏用的是两套算法，这里顺带确认两边一致（同一份正文同一个数）
     const sbChapter = [...document.querySelectorAll<HTMLElement>(".sb-item")]
       .map((e) => e.textContent ?? "")
       .find((t) => t.startsWith("本章"));
     assert(
-      Number((sbChapter?.match(/([\d,]+)/) ?? [])[1]?.replace(/,/g, "") ?? -1) === before + 3,
+      Number((sbChapter?.match(/([\d,]+)/) ?? [])[1]?.replace(/,/g, "") ?? -1) === before + 6,
       `左侧栏与状态栏「本章」应一致，状态栏是 ${JSON.stringify(sbChapter)}`,
     );
     resetDoc(DOC, 0);
