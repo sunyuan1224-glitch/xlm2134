@@ -790,8 +790,8 @@ export default function App() {
         { label: "工作区搜索", checked: sidebarOpen && sidebarTab === "search", onClick: () => useStore.getState().openSidebarTab("search") },
         "separator",
         { title: "挂件" },
-        // 右下角的小鸭挂件。菜单里也能「隐藏挂件」，藏起来后从这里唤回
-        { label: "小鸭挂件", checked: widget.visible, onClick: () => toggleWidget() },
+        // 右下角的欧金金挂件。菜单里也能「隐藏挂件」，藏起来后从这里唤回
+        { label: "欧金金", checked: widget.visible, onClick: () => toggleWidget() },
         "separator",
         { title: "窗口" },
         // keepOpen：连点调字号时菜单不关，方便一直按
@@ -870,7 +870,7 @@ export default function App() {
         <ImmersiveEditor
           activePath={activePath}
           content={content}
-          onChange={(v) => setContent(activePath, v)}
+          onChange={(v, imePending) => setContent(activePath, v, imePending)}
           onSave={() => saveFile(activePath)}
           onExit={() => setImmersive(false)}
           headerSlot={
@@ -950,7 +950,7 @@ export default function App() {
                 key={activePath}
                 path={activePath}
                 initialContent={content}
-                onChange={(v) => setContent(activePath, v)}
+                onChange={(v, imePending) => setContent(activePath, v, imePending)}
                 onSave={() => saveFile(activePath)}
                 onCursor={onCursor}
                 onSelectionChange={onSelectionChange}
@@ -981,7 +981,7 @@ export default function App() {
 
       <StatusBar cursor={cursor} />
 
-      {/* 右下角的小鸭挂件：fixed 定位，不占 .app 的流式布局 */}
+      {/* 右下角的欧金金挂件：fixed 定位，不占 .app 的流式布局 */}
       <PaperWidget />
 
       {menu && (

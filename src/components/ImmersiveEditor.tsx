@@ -11,7 +11,8 @@ export interface ImmersiveEditorProps {
   activePath?: string | null;
   /** 文档内容（受控） */
   content: string;
-  onChange: (content: string) => void;
+  /** 正文变化；imePending = 输入法还没落定（拼音未上屏 / 提交未落盘，见 Editor 的同名参数） */
+  onChange: (content: string, imePending: boolean) => void;
   onSave: () => void;
   onExit: () => void;
   /** 顶栏右侧插槽（自定义按钮等） */
@@ -98,7 +99,7 @@ export function ImmersiveEditor(props: ImmersiveEditorProps) {
     footerSlot,
     showWordCount = true,
     showTimer = true,
-    countMode = "cjk-word",
+    countMode = "char",
     defaultTypewriter = true,
     useBrowserFullscreen = true,
     className,

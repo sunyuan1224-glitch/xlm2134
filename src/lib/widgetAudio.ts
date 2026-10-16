@@ -49,7 +49,7 @@ function warnOnce(key: string, err: unknown): void {
   lastError = `${shorten(key)} → ${msg}`;
   if (warned.has(key)) return;
   warned.add(key);
-  console.warn(`[小鸭挂件] 音效不可用：${lastError}`);
+  console.warn(`[欧金金挂件] 音效不可用：${lastError}`);
 }
 
 export interface AudioDiagnostics {

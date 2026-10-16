@@ -9,7 +9,7 @@
     "icons": "python3 scripts/build-icons.py",
     "app": "concurrently -k \"vite\" \"wait-on tcp:1420 && cross-env MYNOVEL_DEV_URL=http://localhost:1420 electron .\"",
     "app:build": "npm run build && electron-builder --linux AppImage",
-    "test": "npm run test:editor && npm run test:markdown && npm run test:complex && npm run test:export && npm run test:docx-epub && npm run test:volume && npm run test:format && npm run test:vault",
+    "test": "npm run test:editor && npm run test:markdown && npm run test:complex && npm run test:export && npm run test:docx-epub && npm run test:volume && npm run test:format && npm run test:vault && npm run test:store-stats",
     "test:editor": "node scripts/test-editor.mjs",
     "test:markdown": "node scripts/test-markdown.mjs",
     "test:complex": "node scripts/test-complex.mjs",
@@ -17,7 +17,9 @@
     "test:docx-epub": "node scripts/test-docx-epub.mjs",
     "test:volume": "node scripts/test-volume.mjs",
     "test:format": "node scripts/test-format.mjs",
-    "test:vault": "node scripts/test-vault.mjs"
+    "test:vault": "node scripts/test-vault.mjs",
+    "test:store-stats": "node scripts/test-store-stats.mjs",
+    "test:ime-count": "node scripts/test-ime-count.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.7.1",

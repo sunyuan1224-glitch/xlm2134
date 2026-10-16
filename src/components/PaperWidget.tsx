@@ -1,5 +1,5 @@
 /*
- * 右下角的小鸭挂件。版式参考 DeepSeek-Balance-Whale-Widget：一个常驻方块，
+ * 右下角的欧金金挂件。版式参考 DeepSeek-Balance-Whale-Widget：一个常驻方块，
  * 右上角悬停淡出「菜单」按钮，点开是一列基础设置（大小 / 音量 / 音效开关…）。
  *
  * v1 的交互就一条：**左键点一下 → 压扁一下 + 叫一声**。
@@ -14,7 +14,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import girlUrl from "../assets/widget-girl.png";
 import { COMPANION_EDGE } from "../lib/paperCompanion";
 import { formatNumber } from "../lib/wordcount";
-import { getToday, resetToday } from "../lib/writingStats";
+import { SPEED_MIN_ACTIVE_MS, getToday, resetToday } from "../lib/writingStats";
 import {
   WIDGET_LEVEL_MAX,
   WIDGET_LEVEL_MIN,
@@ -39,6 +39,20 @@ import {
   warmSound,
 } from "../lib/widgetAudio";
 import "../widget.css";
+
+/*
+ * 气泡里「平均速度」那行字。
+ *
+ * 活跃时长不够时不给数（分母太小会算出荒唐数，见 SPEED_MIN_ACTIVE_MS），但**不要只留一条
+ * 横线**：用户刚重置完（或者刚换到这个版本、基准归零）会以为功能坏了，问「速度怎么显示不出来」。
+ * 所以等的时候把「还要再写几秒」写出来 —— 让那条横线自己解释自己。
+ */
+function speedText(stats: { added: number; activeMs: number; perHour: number | null }): string {
+  if (stats.perHour !== null) return `${formatNumber(stats.perHour)} 字/时`;
+  if (stats.added === 0) return "—（今天还没写）";
+  const seconds = Math.max(1, Math.ceil((SPEED_MIN_ACTIVE_MS - stats.activeMs) / 1000));
+  return `—（再写 ${seconds} 秒）`;
+}
 
 /** 菜单行：加新功能就往这张表里加，渲染骨架不用改 */
 type MenuRow =
@@ -506,7 +520,7 @@ export function PaperWidget() {
                   <span className="pw-bubble-unit">字</span>
                 </div>
                 <div className="pw-bubble-hint">
-                  平均速度 {stats.perHour === null ? "—" : `${formatNumber(stats.perHour)} 字/时`}
+                  平均速度 {speedText(stats)}
                 </div>
               </div>
               <div className="pw-bubble-egg">欧金金…</div>
@@ -616,3 +630,4 @@ function renderRow(row: MenuRow) {
 }
 
 export default PaperWidget;
+

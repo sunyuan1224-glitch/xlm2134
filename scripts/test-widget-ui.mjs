@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 const dir = await mkdtemp(join(tmpdir(), "mynovel-widget-ui-"));
-// .png 和 .mp3 都要有 loader：挂件同时引用了人物图与小鸭音效（Vite 能处理，esbuild 需要显式声明）
+// .png 和 .mp3 都要有 loader：挂件同时引用了人物图与鸭子音效（duck-squeak.mp3）（Vite 能处理，esbuild 需要显式声明）
 await build({
   entryPoints: [new URL("./widget-ui-webkit.test.tsx", import.meta.url).pathname],
   outfile: join(dir, "check.js"),

@@ -1,5 +1,5 @@
 /*
- * 小鸭挂件的真 WebKit 检查：右下角位置 / 尺寸驱动 / 菜单 / 持久化 / 隐藏与唤回。
+ * 欧金金（挂件）的真 WebKit 检查：右下角位置 / 尺寸驱动 / 菜单 / 持久化 / 隐藏与唤回。
  *
  * 音频不做「有没有响」的断言（无头环境里那取决于机器），但会验素材本身**能被解码**——
  * widgetAudio 对坏素材是静默降级，不验这一条的话「文件坏了」和「没点中」长得一模一样。
@@ -429,9 +429,9 @@ async function run() {
     viewMenu.click();
     await wait(150);
     const entry = [...document.querySelectorAll<HTMLElement>(".menu-item")].find((i) =>
-      (i.textContent ?? "").includes("小鸭挂件"),
+      (i.textContent ?? "").includes("欧金金"),
     );
-    assert(entry, "「视图」菜单里应该有「小鸭挂件」入口");
+    assert(entry, "「视图」菜单里应该有「欧金金」入口");
     entry!.click();
     await wait(200);
     assert(rootEl(), "从「视图」菜单勾选后挂件应当回来");
@@ -771,6 +771,23 @@ async function run() {
     const hintSize = parseFloat(getComputedStyle(hint).fontSize);
     assert(amountSize > hintSize * 1.5, `「今日已写」字号应当明显大于速度（${amountSize} vs ${hintSize}）`);
 
+    /*
+     * 活跃不够时不许只留一条光秃秃的横线（用户报过「平均速度显示不出来，是一条横线」）：
+     * 重置完 / 刚换版本、基准归零之后那半分钟里，得把「还要再写几秒」写出来。
+     */
+    localStorage.removeItem("mynovel:writing-stats");
+    __resetWritingStatsCache();
+    const t1 = Date.now();
+    noteTotalWords(1000, "/bubble-fixture", t1); // 建立基准
+    noteTotalWords(1030, "/bubble-fixture", t1 + 500); // +30 字，活跃几乎为 0
+    await wait(300); // 气泡开着时每 200ms 重渲染一次，等它刷一下
+    const hintCold = bubble!.querySelector<HTMLElement>(".pw-bubble-hint")!;
+    const coldText = hintCold.textContent ?? "";
+    assert(
+      coldText.includes("平均速度") && /秒/.test(coldText),
+      `活跃不足时那行要说明在等什么（还要写几秒），实际「${coldText}」`,
+    );
+
     // 可点（点一下切彩蛋）。代价是它显示的那几秒会吃掉底下的点击，这是换来的
     assert(getComputedStyle(bubble!).pointerEvents === "auto", "气泡应当可点（点一下切彩蛋）");
 
@@ -907,7 +924,7 @@ async function run() {
             title: "第一章",
             status: "草稿",
             summary: "",
-            words: countWords(st0.contents[path] ?? "", "cjk-word"),
+            words: countWords(st0.contents[path] ?? ""),
           },
         ],
       });
@@ -988,7 +1005,7 @@ async function run() {
     assert(!document.querySelector(".pw-bubble"), "5 秒后应当自动收起");
   }
 
-  send("PASS: 小鸭挂件 位置 / 尺寸 / 菜单 / 音效 / 隐藏按钮 / 拖动 / 气泡");
+  send("PASS: 欧金金 位置 / 尺寸 / 菜单 / 音效 / 隐藏按钮 / 拖动 / 气泡");
 }
 
 run().catch((error) => send(`FAIL: ${error.message ?? error}\n${error.stack ?? ""}`));

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { noteEdit, noteTotalWords } from "./lib/writingStats";
 import { api, isDesktop, type FileNode, type Workspace } from "./api";
 import { isChapterFile } from "./lib/chapter";
+import { countWords } from "./lib/wordcount";
 import {
   chapterFilesInTreeOrder,
   normalizeDir,
@@ -81,6 +82,20 @@ interface AppState {
   focusMode: boolean;
   /** 打字机模式（F9）：光标行保持垂直居中 */
   typewriterMode: boolean;
+  /**
+   * 输入法还没落定：正在打拼音（预编辑中），**或者**刚上屏、提交文本还在异步落盘的那一小段。
+   *
+   * 这段时间里 `contents[活动章]` 要么装着 "nihao" 这种拼音字母，要么是提交还没完全落定的
+   * 正文 —— 它是编辑器（CodeMirror）真实同步过来的内容，但**不是最终要统计的东西**。所以：
+   *   · 字数（左侧树 / 全书 / 统计 / 本章）一律等落定之后再算，别把拼音当字；
+   *   · 内容本身照收，保存与脏标记不能等（关上窗口时正文得是完整的）。
+   *
+   * 编辑器在每次 onChange 时把这个状态带过来，并在**落定那一刻再报一次正文**
+   * （见 Editor.tsx 的「落定补报」）。补报这条不能省：「上屏那一次恰好 pending=false」
+   * 是靠不住的 —— 真实输入法里提交事件与 compositionend 的先后顺序各引擎不同，
+   * 顺序不对就会把上屏那一次也当成预编辑，汉字于是永远进不了字数（实测踩过）。
+   */
+  imePending: boolean;
 
   init: () => Promise<void>;
   chooseRoot: () => Promise<void>;
@@ -96,7 +111,14 @@ interface AppState {
   loadContent: (path: string) => Promise<void>;
   closeTab: (path: string) => void;
   setActive: (path: string) => void;
-  setContent: (path: string, content: string) => void;
+  /**
+   * 正文改动。
+   *
+   * `imePending` = 这次正文来自「输入法还没落定」的那一段（拼音未上屏，或提交还没落稳）：
+   * 内容照收（编辑器回显、保存、脏标记都要它即时），但**字数先别重算** ——
+   * 那会儿的数字不是用户写的字。落定之后编辑器会再报一次（imePending=false），字数在那里落定。
+   */
+  setContent: (path: string, content: string, imePending?: boolean) => void;
   saveFile: (path: string) => Promise<void>;
   saveAll: () => Promise<void>;
   toggleExpand: (path: string) => void;
@@ -220,6 +242,19 @@ function titleOf(name: string, meta: Record<string, string>): string {
   return meta.title || name.replace(/\.md$/, "");
 }
 
+/*
+ * chapters 当前是不是「一整个工作区的完整快照」。
+ *
+ * 打开工作区时 chapters 会先被清成 []（上一个工作区的章节名不能留在屏上），读完盘才落成
+ * 完整列表。**那当口的 [] 不是「这本书一个字都没有」** —— 统计认的是净增，把 0 喂进去会
+ * 先把基准砸到 0，等真数字回来又把整本书记成今天写的：实测不管第一次打开还是重开，
+ * 挂件上的「今日已写」都当场变成 +全书字数（一万多字就是这么跳出来的），而用户一个字没敲。
+ *
+ * 所以载入期间先别喂（见 setRoot / loadChapters），等完整快照落地再喂。
+ * 缺省是 true：常态下 chapters 一变就该喂，别让统计漏掉（见 feedBookWords）。
+ */
+let chaptersComplete = true;
+
 export const useStore = create<AppState>((set, get) => ({
   root: null,
   tree: [],
@@ -243,6 +278,7 @@ export const useStore = create<AppState>((set, get) => ({
   sourceMode: false,
   focusMode: false,
   typewriterMode: false,
+  imePending: false,
 
   init: async () => {
     // 浏览器预览没有 Tauri 后端，任何 invoke 都会 reject，直接跳过。
@@ -323,6 +359,9 @@ export const useStore = create<AppState>((set, get) => ({
 
     const expanded = new Set<string>();
     tree.forEach((n) => expanded.add(n.path)); // 默认展开第一层
+    // 从这里到 loadChapters 落盘之间，chapters 是「还没读」而不是「书是空的」，
+    // 别把这个 0 喂给写作统计（那会把基准砸到 0，整本书被记成今天写的，见 chaptersComplete）
+    chaptersComplete = false;
     set({
       root,
       tree,
@@ -338,7 +377,12 @@ export const useStore = create<AppState>((set, get) => ({
       flippedBooks,
       status: "工作区: " + root,
     });
-    await get().loadChapters();
+    try {
+      await get().loadChapters();
+    } finally {
+      // loadChapters 正常结束时它自己会置回 true；读盘半路炸了也不能把统计永久哑掉
+      chaptersComplete = true;
+    }
     return true;
   },
 
@@ -404,18 +448,36 @@ export const useStore = create<AppState>((set, get) => ({
 
   setActive: (path) => set({ activePath: path }),
 
-  setContent: (path, content) => {
-    // 只记「有人在敲」，具体字数由 StatusBar 那边喂（它本来就算着全书字数）
+  setContent: (path, content, imePending = false) => {
+    // 只记「有人在敲」：活跃时长照记（拼音也是在打字）
     noteEdit();
     const st = get();
-    // 内容没变就什么都不做：新对象 + 新 Set 会让订阅者白重渲染，
+    const sameText = st.contents[path] === content;
+    // 内容没变、组合态也没变就什么都不做：新对象 + 新 Set 会让订阅者白重渲染，
     // 还会把「其实没改」的路径标成脏，Ctrl+S 时白写一遍磁盘。
-    if (st.contents[path] === content) return;
-    const contents = { ...st.contents, [path]: content };
-    // 已经是脏的复用同一个 Set，省掉一次全量复制
-    const dirty = st.dirty.has(path) ? st.dirty : new Set(st.dirty).add(path);
-    set({ contents, dirty });
-    // 左侧栏的字数要跟着打字变（防抖 + 只重算这一章，见 scheduleChapterWords）
+    if (sameText && st.imePending === imePending) return;
+    if (sameText) {
+      set({ imePending });
+    } else {
+      const contents = { ...st.contents, [path]: content };
+      // 已经是脏的复用同一个 Set，省掉一次全量复制
+      const dirty = st.dirty.has(path) ? st.dirty : new Set(st.dirty).add(path);
+      set({ contents, dirty, imePending });
+    }
+    /*
+     * 输入法没落定就**不重算字数**。
+     *
+     * 编辑器（CodeMirror）会把预编辑文本同步进文档，也就是说这段正文此刻是 "nihao"
+     * 这种拼音字母 —— 它不是用户写的字。算进去的话，左侧树、全书、挂件的「今日已写」
+     * 会先按拼音涨一遍，而拼音上屏时 "nihao" → "你好" 在统计眼里是**净减少**
+     * （统计只认增加），已经记进去的拼音不会退回来：白记一笔。
+     *
+     * 落定之后编辑器会**再报一次**（imePending=false），字数在那里一次补齐 ——
+     * 所以这里不做「等下一次 setContent 顺便救回来」的指望：实打实踩过一次，
+     * 有的引擎里上屏那次也落在这个 pending 窗口内，于是汉字一路进不了字数。
+     */
+    if (imePending) return;
+    // 左侧栏的字数要跟着打字变（节流 + 只重算这一章，见 scheduleChapterWords）
     scheduleChapterWords(path);
   },
 
@@ -434,6 +496,10 @@ export const useStore = create<AppState>((set, get) => ({
       const dirty = new Set(get().dirty);
       dirty.delete(path); // 磁盘版本就是当前版本，不再算未保存
       set({ contents, dirty });
+      // 正文换了，这一章的字数得跟着重算 —— 不然左侧树/状态栏还挂着旧字数，
+      // 写作统计的基准也停在旧数上（外部改小之后再打字会被"吃掉"：正文少了 20 字、
+      // 基准却还高着 20，得先白写 20 字才重新开始计数。见 store-writing-stats 用例）
+      recountChapterWords(path);
     } catch (e) {
       set({ status: "重新读取失败: " + String(e) });
     }
@@ -588,7 +654,9 @@ export const useStore = create<AppState>((set, get) => ({
       }
     });
     const result: ChapterMeta[] = chaps.map((path, i) => {
-      const text = texts[i] ?? "";
+      // 再瞄一眼内存：读盘是几毫秒前的事，打开工作区的当口完全来得及又敲进来几个字
+      // （读盘途中敲的字在磁盘那份里没有，拿磁盘的去算会让这章的字数落后于编辑器）
+      const text = get().contents[path] ?? texts[i] ?? "";
       const { meta } = parseFrontmatter(text);
       const name = path.split("/").pop() ?? path;
       return {
@@ -600,6 +668,8 @@ export const useStore = create<AppState>((set, get) => ({
         words: meta.words ? parseInt(meta.words, 10) : countQuick(text),
       };
     });
+    // 这一份是完整快照（每章都已算好字数），现在才轮到统计去喂基准
+    chaptersComplete = true;
     set({ chapters: result });
   },
 
@@ -695,23 +765,18 @@ function reorderChapters(): void {
   if (next.length === st.chapters.length) useStore.setState({ chapters: next });
 }
 
+/*
+ * 左侧树 / 全书 / 写作统计用的字数 = **lib/wordcount 的默认口径**（每个非空白字符算 1：
+ * 汉字、英文、数字、标点都算，空格不算）。
+ *
+ * 以前这里自己另写了一套「汉字逐字 + 西文按词、标点不计」，于是：
+ *   · 英文、数字、标点都不进左侧树，全书与挂件的「今日已写」跟着一起少；
+ *   · 而且它和状态栏「本章」用的不是同一套算法（连 `<!-- nw:no -->` 都只剔一半），
+ *     保存 / 刷新那一刻数字会莫名跳一下。
+ * 现在只留一个入口：要改口径就改 lib/wordcount，别在这儿另起一份。
+ */
 function countQuick(text: string): number {
-  const body = text.replace(FRONTMATTER_RE, "");
-  const stripped = body.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
-  let n = 0;
-  let inWord = false;
-  for (const ch of stripped) {
-    if (/[\u4e00-\u9fff\u3400-\u4dbf]/.test(ch)) {
-      n++;
-      inWord = false;
-    } else if (/[\p{L}\p{N}]/u.test(ch)) {
-      if (!inWord) {
-        n++;
-        inWord = true;
-      }
-    } else inWord = false;
-  }
-  return n;
+  return countWords(text);
 }
 
 /*
@@ -728,19 +793,26 @@ function countQuick(text: string): number {
  *      数字会莫名其妙跳一下（例如从 3200 变成 3222）。
  *
  * 100ms 的取舍：看着就是实时的（每秒最多 10 次收数），而开销被钳在与打字速度、章节长度
- * 都无关的上限里 —— 实测单章扫描 1 万字 0.78ms / 5 万 2.34ms / 20 万 9.05ms，
+ * 都无关的上限里 —— 实测单章扫描 1 万字 0.15ms / 5 万 0.78ms / 20 万 1.55ms（countWords），
  * 也就是普通章节每秒占不到 1ms。别再退回去用防抖，「停下才动」不算实时。
  */
 const CHAPTER_WORDS_THROTTLE_MS = 100;
 let wordCountTimer: ReturnType<typeof setTimeout> | null = null;
-/** 最后一次触发重算的章节；窗口内又改了别的章就以最后一章为准（编辑器只有一个活动文件） */
-let wordCountPath: string | null = null;
+/**
+ * 这一轮里被改过、还等着重算的路径。
+ *
+ * 用集合而不是「记住最后一个」：一个窗口里（100ms）改了两个文件的话（总纲 + 正文、
+ * 拆章、程序化改动…），只重算最后那个会**把另一个的字数永久留在旧值上** —— 留在旧值上
+ * 就是「正文矮了、数字还高着」，写作统计的基准跟着一起高，接下来敲的字先得白填这个坑
+ * （用户看到的就是「打了三个字只涨一个」）。集合不贵：通常就一个元素。
+ */
+let wordCountPending = new Set<string>();
 /** 上次**真正**重算的时刻：节流的起点，与「什么时候又改了」无关 */
 let wordCountLastAt = 0;
 
 function scheduleChapterWords(path: string): void {
-  wordCountPath = path;
-  // 已经排好一次了：它会取到最新的 path，不用重排（重排就退化成防抖了）
+  wordCountPending.add(path);
+  // 已经排好一次了：它会取到最新的集合，不用重排（重排就退化成防抖了）
   if (wordCountTimer !== null) return;
   const elapsed = Date.now() - wordCountLastAt;
   wordCountTimer = setTimeout(runChapterWords, Math.max(0, CHAPTER_WORDS_THROTTLE_MS - elapsed));
@@ -749,14 +821,25 @@ function scheduleChapterWords(path: string): void {
 function runChapterWords(): void {
   wordCountTimer = null;
   wordCountLastAt = Date.now();
-  const p = wordCountPath;
-  wordCountPath = null;
-  if (p !== null) recountChapterWords(p);
+  const pending = wordCountPending;
+  wordCountPending = new Set();
+  // 组合态里先不算：活儿留在待办里，下一轮再看（见 recountChapterWords 的注释）
+  const imePending = useStore.getState().imePending;
+  pending.forEach((p) => (imePending ? wordCountPending.add(p) : recountChapterWords(p)));
+  if (wordCountPending.size > 0) {
+    wordCountTimer = setTimeout(runChapterWords, CHAPTER_WORDS_THROTTLE_MS);
+  }
 }
 
 /** 重算一章的字数；数字没变就不换 chapters 数组，免掉整棵文件树的白重渲染 */
 function recountChapterWords(path: string): void {
   const st = useStore.getState();
+  /*
+   * 输入法组合中不重算：此刻 contents 里是 "nihao" 这种拼音（CodeMirror 会把预编辑文本
+   * 同步进文档），拿它算出来的数字不是用户写的字，喂给写作统计就白记一笔（见 setContent）。
+   * 上屏之后 composing 会落回 false，那一轮补算 —— 这里不排新的待办，调用方负责再叫一次。
+   */
+  if (st.imePending) return;
   const text = st.contents[path];
   if (text === undefined) return;
   const i = st.chapters.findIndex((c) => c.path === path);
@@ -794,5 +877,8 @@ function feedBookWords(chapters: ChapterMeta[], root: string | null): void {
 }
 
 useStore.subscribe((s, prev) => {
+  // chaptersComplete = false 只出现在「打开工作区、正读盘」这一小段：那时的 chapters
+  // 是清空后的占位，不是书的真实字数（见 chaptersComplete 的注释）
+  if (!chaptersComplete) return;
   if (s.chapters !== prev.chapters) feedBookWords(s.chapters, s.root);
 });

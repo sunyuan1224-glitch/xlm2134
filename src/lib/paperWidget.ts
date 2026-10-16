@@ -1,5 +1,5 @@
 /*
- * 「小鸭挂件」的设置。
+ * 「欧金金挂件」的设置。
  *
  * 版式参考 DeepSeek-Balance-Whale-Widget（DSH 右下角的常驻挂件）：右下角一个方块，
  * 尺寸由 scale 驱动、可拖动调节。这里只做第一层——能点击、能出声、有基础设置菜单；
@@ -12,7 +12,7 @@
 import { create } from "zustand";
 
 export interface WidgetSettings {
-  /** 挂件是否显示。「视图 → 小鸭挂件」与菜单里的「隐藏挂件」都改这一项 */
+  /** 挂件是否显示。「视图 → 挂件 → 欧金金」与菜单里的「隐藏挂件」都改这一项 */
   visible: boolean;
   /** 尺寸倍数，驱动 --widget-scale */
   scale: number;
@@ -313,7 +313,7 @@ export function resetWidget(): void {
   setWidget({ ...DEFAULT_WIDGET });
 }
 
-/** 「视图 → 小鸭挂件」用的开关 */
+/** 「视图 → 挂件 → 欧金金」用的开关 */
 export function toggleWidget(): void {
   setWidget({ visible: !useWidgetStore.getState().widget.visible });
 }

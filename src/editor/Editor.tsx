@@ -35,7 +35,13 @@ interface Props {
   onHeadingClick?: (h: { level: number; text: string; line: number }) => void;
   path: string;
   initialContent: string;
-  onChange: (content: string) => void;
+  /**
+   * 正文变化。`imePending = true` 表示这次正文来自「输入法还没落定」的那一段
+   * （拼音未上屏，或刚上屏、提交还在落盘）：上层照收内容，但字数统计要等落定 ——
+   * 落定那一刻会**再回调一次**（imePending=false），那一次才是可以计数的正文。
+   * 别把这个参数当成「正文不完整」而丢掉。
+   */
+  onChange: (content: string, imePending: boolean) => void;
   onSave: () => void;
   onCursor: (line: number, col: number, selLen: number) => void;
   registerView?: (view: EditorView | null) => void;
@@ -141,6 +147,22 @@ export function Editor({
     guard.whenIdle(fn, key);
   };
 
+  /** 现在这份正文算不算「输入法还没落定」（预编辑中，或刚上屏、提交还在落盘） */
+  const imePending = () => !(imeRef.current?.idle() ?? true);
+
+  /**
+   * 把**当前**正文报给 store（这次算「已落定」，字数照算）。
+   *
+   * 组合结束 / 提交落盘之后由 whenImeIdle 触发，所以现读文档 —— 不能用某次 update 里
+   * 捕获的那份，那份可能还停在拼音上。多次组合变更会被守卫按 key 合并成一次。
+   */
+  const echoNow = () => {
+    const view = viewRef.current;
+    if (!view) return;
+    const text = view.state.doc.toString();
+    echoRef.current = text;
+    cbs.current.onChange(text, false);
+  };
   useEffect(() => {
     if (!hostRef.current) return;
 
@@ -192,7 +214,19 @@ export function Editor({
         if (u.docChanged) {
           const nextDoc = u.state.doc.toString();
           echoRef.current = nextDoc;
-          cbs.current.onChange(nextDoc);
+          /*
+           * 正文照报，但把「输入法还没落定」一起报上去，让 store 先别动字数：
+           * 组合期间文档里是 "nihao" 这种拼音（CodeMirror 会把预编辑文本同步进 state.doc，
+           * 见 @codemirror/view 的 applyDOMChange），不是用户要写的字。
+           *
+           * 判据是 !guard.idle()（预编辑中 + 提交落盘前的那段宽限），不是 guard.composing：
+           * 前者把「上屏那一次」也可能罩进来 —— 那正是我们要的。各引擎里「提交文本进文档」
+           * 与 compositionend 的先后顺序不同，光靠「上屏那一下 composing 恰好为 false」
+           * 会把提交漏掉（漏了就再也补不上：汉字一直不进字数）。所以这里不赌顺序，
+           * 而是在**落定那一刻再补报一次**（下面 whenImeIdle(echoNow)），由那一次来落字数。
+           */
+          cbs.current.onChange(nextDoc, imePending());
+          if (imePending()) whenImeIdle(echoNow, "echo");
         }
         if (u.selectionSet || u.docChanged) {
           const head = u.state.selection.main.head;
@@ -281,6 +315,13 @@ export function Editor({
 
     // 当前编辑块始终保留源码 DOM，输入法期间不执行打字机滚动。
     return () => {
+      /*
+       * 组合没结束就被拆掉（切文件、换视图模式）：把当前正文按「组合已结束」报一次。
+       * 不报的话 store 那边 imePending 会一直挂着 true，字数一路冻着不更新
+       * （冻到下一次真正敲键才解开）；而正文里那串没上屏的拼音此刻也确实留在文档里了，
+       * 就当普通正文算 —— 这与「点开别处、拼音留在正文里」的既有行为一致。
+       */
+      cbs.current.onChange(view.state.doc.toString(), false);
       imeRef.current?.dispose();
       imeRef.current = null;
       registerView?.(null);
@@ -342,7 +383,7 @@ export function Editor({
       }
       // 外部内容来自组合中的旧文本、改动又重叠，直接整篇替换会把用户刚提交的字冲掉。
       // 保留本地正文，并把文档重新声明为真源，避免 store 与正文长期不一致。
-      cbs.current.onChange(cur);
+      cbs.current.onChange(cur, imePending());
     };
     if (imeRef.current?.idle() ?? true) apply();
     else whenImeIdle(apply, "external");

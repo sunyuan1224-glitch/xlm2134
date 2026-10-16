@@ -25,6 +25,8 @@ export interface DayStat {
 }
 
 interface Stats {
+  /** 存档版本（也算字数口径的版本）；对不上就整份作废，见 load() */
+  version: number;
   days: Record<string, DayStat>;
   /** 上次看到的全书字数；用来算净增。null = 还没建立基准 */
   seen: number | null;
@@ -35,12 +37,27 @@ interface Stats {
 }
 
 const STORAGE_KEY = "mynovel:writing-stats";
+/*
+ * 存档版本。**改了字数口径就要 +1**（v1 → v2：英文、数字、标点也算进字数了）。
+ * 口径一变，「用旧口径攒出来的今日已写」与「新口径算出来的全书字数」就不可比：
+ * 升级后第一次喂数会把整本书多出来的那部分（标点、西文多算的字）记成「今天写的」，
+ * 一开应用白涨一两千。宁可整份丢掉，从 0 重新开始。
+ */
+const STATS_VERSION = 2;
 /** 两次输入间隔超过这个数就算停顿，不计入活跃时长 */
 const IDLE_GAP_MS = 90_000;
 /** 落盘节流 */
 const PERSIST_EVERY_MS = 2_000;
-/** 活跃时长少于这个数就不显示速度：刚写两秒会算出几万字/时这种荒唐数 */
-const MIN_ACTIVE_MS = 60_000;
+/**
+ * 活跃时长少于这个数就不显示速度：分母只有几秒时，敲三个字就能算出「5400 字/时」这种
+ * 没意义的数，那条横线是在拦这个。
+ *
+ * 30 秒是**够用又不会让人以为坏了**的下限：实测 30~60 秒的窗口里算出来的数已经在正常
+ * 范围（写一会儿就是几百到一两千字/时）。原来定 60 秒，结果刚重置完 / 刚换版本
+ * （基准归零）的人盯着横线问「速度是不是显示不出来」—— 所以挂件那边在等的时候会把
+ * 「还要再写几秒」写出来，别让它成为一条没头没尾的横线。
+ */
+export const SPEED_MIN_ACTIVE_MS = 30_000;
 /** 只留最近这么多天，免得 key 无限长下去 */
 const KEEP_DAYS = 60;
 
@@ -54,7 +71,7 @@ function dayKey(now: number): string {
 }
 
 function load(): Stats {
-  const empty: Stats = { days: {}, seen: null, lastAt: 0, root: null };
+  const empty: Stats = { version: STATS_VERSION, days: {}, seen: null, lastAt: 0, root: null };
   try {
     if (typeof window === "undefined" || !window.localStorage) return empty;
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -63,6 +80,8 @@ function load(): Stats {
     if (!parsed || typeof parsed !== "object" || typeof parsed.days !== "object" || !parsed.days) {
       return empty;
     }
+    // 旧版本的存档（没有 version 的算 v1）：口径不同，整份丢掉重新开始（理由见 STATS_VERSION）
+    if (parsed.version !== STATS_VERSION) return empty;
     const days: Record<string, DayStat> = {};
     for (const [k, v] of Object.entries(parsed.days)) {
       const added = Number((v as DayStat)?.added);
@@ -72,6 +91,7 @@ function load(): Stats {
       }
     }
     return {
+      version: STATS_VERSION,
       days,
       seen: Number.isFinite(parsed.seen) ? Number(parsed.seen) : null,
       lastAt: Number.isFinite(parsed.lastAt) ? Number(parsed.lastAt) : 0,
@@ -142,6 +162,11 @@ export function noteEdit(now: number = Date.now()): void {
  *
  * root 用来识别换工作区：换了就把基准重建、**不**把差值算成今日已写
  * （否则从 10 万字的工作区切到 5 千字的那个，再切回来就凭空多出 9 万字）。
+ *
+ * ⚠️ 喂进来的必须是「这本书现在的真实字数」。打开工作区时 store 会先把章节列表清空、
+ * 读完盘才算得出来 —— 中间那个 0 要是喂进来，基准就被砸到 0，等真数字回来整本书就成了
+ * 「今天写的」（挂件上一开工作区就涨一万多）。store 那边用 chaptersComplete 挡住这一段，
+ * 别在这里兜底：这一层分不清「书真的是空的」和「还没读出来」。
  */
 export function noteTotalWords(total: number, root: string | null, now: number = Date.now()): void {
   if (!Number.isFinite(total)) return;
@@ -174,7 +199,8 @@ export function getToday(now: number = Date.now()): TodayStats {
   const d = get().days[dayKey(now)];
   const added = d ? d.added : 0;
   const activeMs = d ? d.activeMs : 0;
-  const perHour = activeMs >= MIN_ACTIVE_MS && added > 0 ? Math.round((added / activeMs) * 3_600_000) : null;
+  const perHour =
+    activeMs >= SPEED_MIN_ACTIVE_MS && added > 0 ? Math.round((added / activeMs) * 3_600_000) : null;
   return { added, activeMs, perHour };
 }
 

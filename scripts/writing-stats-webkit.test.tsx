@@ -5,8 +5,10 @@
  * 根因是喂数点曾经是 StatusBar 里那个「全书」—— 一个**界面数字**：
  *   · 切章节的那一帧，当前章的实时字数还是上一章的值（useDeferredCount 滞后一帧），
  *     全书就先虚高再落回来 —— 落下去再涨回来，就被记成净增；
- *   · 点「本章」切统计模式（中+词 → 字符）会让这个数字翻几倍，同样被记成净增。
+ *   · 点「本章」切统计模式（字符 → 中+词）会让这个数字整个换口径，同样被记成净增。
  * 现在统计由 store 喂（各章字数之和，见 store.feedBookWords），界面不再参与。
+ *
+ * （口径是 lib/wordcount 的默认那一套：每个非空白字符算 1，汉字 / 英文 / 数字 / 标点都算。）
  *
  * 所以这里钉三条：切章节、切模式都不许动统计；真打字必须动；
  * 而状态栏那个「全书」得是各章之和、不吃显示模式那一套。
@@ -82,17 +84,21 @@ async function run() {
     `在已写好的文章之间反复切换不该增加今日已写，实际 +${afterSwitch - base}（长 ${longWords} / 短 ${shortWords}）`,
   );
 
-  /* -------- 2. 切换统计模式（中+词 → 字符 → 段落）：那是显示口径，不是字数 -------- */
+  /* -------- 2. 切换统计模式（字符 → 中+词 → 段落）：那是显示口径，不是字数 -------- */
   const modeCell = document.querySelector<HTMLElement>(".sb-click");
   check(modeCell, "状态栏里应当有可点的统计模式格子");
+  check(
+    modeCell!.textContent!.includes("字符"),
+    `默认口径应当是「字符」（含标点，与左侧树 / 全书同一套），实际「${modeCell!.textContent}」`,
+  );
   for (let i = 0; i < 3; i++) {
-    modeCell!.click(); // 中+词 → 字符 → 段落 → 中+词
+    modeCell!.click(); // 字符 → 中+词 → 段落 → 字符
     await wait(30);
   }
-  check(modeCell!.textContent!.includes("中+词"), `点了 3 下应当转回「中+词」，实际「${modeCell!.textContent}」`);
+  check(modeCell!.textContent!.includes("字符"), `点了 3 下应当转回「字符」，实际「${modeCell!.textContent}」`);
   check(getToday().added === base, `切统计模式不该增加今日已写，实际 +${getToday().added - base}`);
 
-  /* 模式只作用于「本章」：全书是各章之和（中+词），不许跟着换成字符口径 */
+  /* 模式只作用于「本章」：全书是各章之和（默认口径），不许跟着换成别的口径 */
   const bookItem = [...document.querySelectorAll<HTMLElement>(".sb-item")]
     .map((e) => e.textContent ?? "")
     .find((t) => t.startsWith("全书"));
