@@ -205,7 +205,8 @@ cd <项目目录>
 
 ## 开发与重新打包
 
-需要 Node.js、Rust、GTK3 与 WebKit2GTK 4.1：
+需要 Node.js。安装依赖时 electron 的二进制会在首次用到时下载：如果 `node_modules/electron/dist` 不存在，
+先跑一次 `node node_modules/electron/install.js`（Electron 44 起去掉了 postinstall）。
 
 ```bash
 npm install
@@ -224,6 +225,41 @@ ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ \
 ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ \
 npm run app:build
 ```
+
+### Windows
+
+Windows 上只要 Node.js（打 Electron 包不需要 Rust / GTK3 / WebKit2GTK，那几个只有
+`scripts/test-*-webkit.mjs` 那批旧 WebKit 用例还要）：
+
+```powershell
+npm install
+npm run app             # 开发版
+npm run app:build:win   # NSIS 安装包 + 免安装 portable，产物在 release/
+npm run app:build:windir  # 只出 release\win-unpacked\（调试打包问题时最快）
+```
+
+产物：
+
+| 文件 | 说明 |
+| --- | --- |
+| `MyNovel_<版本>_x64_Setup.exe` | 用户级安装（`%LOCALAPPDATA%\Programs\MyNovel`），不弹 UAC，带开始菜单 / 桌面快捷方式；设置存在 `%APPDATA%\com.local.mynovel`，卸载不删 |
+| `MyNovel_<版本>_x64_Portable.exe` | 单文件免安装版 |
+
+首次打包有一个 Windows 特有的坑：electron-builder 要解压 `winCodeSign-2.6.0.7z`，那个包里带着
+macOS 的符号链接，普通用户解压会 `EPERM: Cannot create symbolic link`。两种解法，任选其一：
+
+1. 打开「设置 → 系统 → 开发者选项 → 开发人员模式」（管理员操作一次）。这同时也让
+   `npm run test:vault` 能跑——那批用例靠符号链接验证「工作区外逃」的防护；
+2. 或者不升权限，手工把 Windows 用得着的那部分铺进缓存（build 失败一次之后 .7z 才会出现在缓存里）：
+
+   ```powershell
+   $cache = "$env:LOCALAPPDATA\electron-builder\Cache\winCodeSign"
+   $arc = Get-ChildItem $cache -Filter *.7z | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+   & node_modules\7zip-bin\win\x64\7za.exe x $arc.FullName "-o$cache\winCodeSign-2.6.0" "-x!darwin" -y
+   ```
+
+安装包目前**没有签名**，首次运行 Windows 会弹 SmartScreen「未知发布者」，点「更多信息 → 仍要运行」即可。
+`scripts/release.sh` 是 Linux 专用的（bash + gh + AppImage），Windows 侧目前只到「构建产物」这一步。
 
 ### 发版
 

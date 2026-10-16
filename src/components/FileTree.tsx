@@ -162,7 +162,7 @@ export const FileTree = memo(function FileTree() {
 
   if (!root) return null;
 
-  const rootLabel = root.split("/").pop() || root;
+  const rootLabel = basename(root) || root;
 
   /** 某目录里章的完整顺序（注册表优先，未列入的按文件名兜底）。总是读最新 files。 */
   const effectiveOrder = (dir: string): string[] => {

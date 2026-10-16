@@ -9,6 +9,9 @@
     "icons": "python3 scripts/build-icons.py",
     "app": "concurrently -k \"vite\" \"wait-on tcp:1420 && cross-env MYNOVEL_DEV_URL=http://localhost:1420 electron .\"",
     "app:build": "npm run build && electron-builder --linux AppImage",
+    "app:build:linux": "npm run build && electron-builder --linux AppImage",
+    "app:build:win": "npm run build && electron-builder --win nsis portable",
+    "app:build:windir": "npm run build && electron-builder --win --dir",
     "test": "npm run test:editor && npm run test:markdown && npm run test:complex && npm run test:export && npm run test:docx-epub && npm run test:volume && npm run test:format && npm run test:vault && npm run test:store-stats",
     "test:editor": "node scripts/test-editor.mjs",
     "test:markdown": "node scripts/test-markdown.mjs",
@@ -69,6 +72,36 @@
     },
     "appImage": {
       "artifactName": "MyNovel_${version}_amd64.AppImage"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MyNovel",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "MyNovel_${version}_x64_Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "MyNovel_${version}_x64_Portable.${ext}"
     }
   },
   "author": "MyNovel"

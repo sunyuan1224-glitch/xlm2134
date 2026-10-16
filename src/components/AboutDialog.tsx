@@ -29,7 +29,7 @@ const TECH =
   "Electron · React 19 · TypeScript · CodeMirror 6。Markdown 解析用 @lezer/markdown，" +
   "即时预览与导出共用同一套渲染器，做到所见即所得。" +
   "（2026-10 从 Tauri + WebKitGTK 迁到 Electron：那套在这台机器只给 31fps，换 Chromium 后实测 180fps。）" +
-  "当前分发形态是 Arch Linux 上的单文件 AppImage。";
+  "当前分发形态：Linux 上是单文件 AppImage，Windows 上是 NSIS 安装包（另附免安装的 portable 版）。";
 
 export function AboutDialog({ onClose }: Props) {
   const companionVisible = useStore((s) => s.companionVisible);

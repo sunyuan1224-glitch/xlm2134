@@ -169,8 +169,10 @@ export function dirName(path: string): string {
   return idx >= 0 ? path.slice(0, idx) : "";
 }
 
+/** 最后一段。先把反斜杠折成斜杠：Windows 上的工作区根是 `D:\小说` 这种绝对路径，
+ *  只按 "/" 切会把整条路径原样吐回来（状态栏、EPUB 书名都会跟着一起错）。 */
 export function basename(path: string): string {
-  const parts = path.split("/");
+  const parts = path.replace(/\\/g, "/").split("/");
   return parts[parts.length - 1];
 }
 

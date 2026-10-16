@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store";
+import { basename } from "../lib/chapter";
 import { countWords, formatNumber, type CountMode } from "../lib/wordcount";
 
 export function StatusBar({ cursor }: { cursor: { line: number; col: number; selLen: number } }) {
@@ -40,7 +41,7 @@ export function StatusBar({ cursor }: { cursor: { line: number; col: number; sel
   return (
     <div className="statusbar">
       <div className="sb-left">
-        <span className="sb-item">{root ? root.split("/").pop() : "未选择工作区"}</span>
+        <span className="sb-item">{root ? basename(root) : "未选择工作区"}</span>
         {activePath && <span className="sb-item sb-path">{activePath}</span>}
       </div>
       <div className="sb-right">

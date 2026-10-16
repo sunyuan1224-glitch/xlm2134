@@ -21,6 +21,61 @@ const CONFIG_DIR = path.join(app.getPath("appData"), "com.local.mynovel");
 
 let mainWindow = null;
 
+/* -------------------------------------------------------------- 本机字体族 */
+
+/*
+ * 设置面板的字体下拉要用「本机已安装字体」。
+ * Linux 有 fontconfig，一条 fc-list 就够了；Windows 没有 fc-list，
+ * 改用 PowerShell 问 GDI+ 的字体表——比读注册表准，注册表里的键名是
+ * "Arial Bold" 这种带字重的名字，不是族名。
+ * 两条路都拿不到就返回空表：FontPicker 会自动只显示预设，不报错也不挡设置面板。
+ */
+const FONT_EXEC_OPTS = { maxBuffer: 32 * 1024 * 1024, windowsHide: true, timeout: 20000 };
+
+function uniqueSorted(names) {
+  const set = new Set();
+  for (const n of names) {
+    const name = String(n).trim();
+    if (name) set.add(name);
+  }
+  return [...set].sort();
+}
+
+/** fc-list 的输出是「族名,别名1,别名2」一行一个字体，只取族名 */
+function parseFcList(stdout) {
+  return uniqueSorted(String(stdout).split("\n").map((line) => line.split(",")[0] ?? ""));
+}
+
+/** 先强制 stdout 走 UTF-8，否则中文族名会被控制台代码页啃成乱码 */
+const WIN_FONT_SCRIPT = [
+  "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);",
+  "Add-Type -AssemblyName System.Drawing;",
+  "(New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }",
+].join(" ");
+
+function listFontsWindows() {
+  return new Promise((resolve) => {
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", WIN_FONT_SCRIPT],
+      { ...FONT_EXEC_OPTS, encoding: "utf8" },
+      (err, stdout) => resolve(err ? [] : uniqueSorted(String(stdout).split(/\r?\n/))),
+    );
+  });
+}
+
+function listFontsLinux() {
+  return new Promise((resolve) => {
+    execFile("fc-list", ["--format", "%{family}\n"], FONT_EXEC_OPTS, (err, stdout) =>
+      resolve(err ? [] : parseFcList(stdout)),
+    );
+  });
+}
+
+function listFonts() {
+  return process.platform === "win32" ? listFontsWindows() : listFontsLinux();
+}
+
 /* ------------------------------------------------------------------ 命令表 */
 
 const commands = {
@@ -77,20 +132,7 @@ const commands = {
   },
 
   /** 本机字体族：取不到就返回空表，设置里自动退回「只显示预设」 */
-  list_fonts() {
-    return new Promise((resolve) => {
-      execFile("fc-list", ["--format", "%{family}\n"], { maxBuffer: 32 * 1024 * 1024 }, (err, stdout) => {
-        if (err) return resolve([]);
-        const set = new Set();
-        for (const line of String(stdout).split("\n")) {
-          const first = line.split(",")[0];
-          const name = first ? first.trim() : "";
-          if (name) set.add(name);
-        }
-        resolve([...set].sort());
-      });
-    });
-  },
+  list_fonts: () => listFonts(),
 
   open_url: async ({ url }) => {
     await shell.openExternal(url);
@@ -120,6 +162,8 @@ function createWindow() {
     minHeight: 480,
     backgroundColor: "#fffafc",
     autoHideMenuBar: true,
+    // Windows 认 .ico（标题栏 + 任务栏），Linux 认 .png；macOS 忽略这个字段
+    icon: path.join(__dirname, "..", "build", process.platform === "win32" ? "icon.ico" : "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -163,11 +207,16 @@ function createWindow() {
 }
 
 // Chromium 的沙箱在 AppImage 里偶尔会因为 setuid helper 缺失而起不来，
-// 这两个开关是 Electron 打包 Linux 发行版的常规配置。
-app.commandLine.appendSwitch("enable-features", "WaylandWindowDecorations");
+// 这两个开关是 Electron 打包 Linux 发行版的常规配置（Windows 上加了没意义）。
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("enable-features", "WaylandWindowDecorations");
+}
 if (process.env.MYNOVEL_DISABLE_SANDBOX === "1") {
   app.commandLine.appendSwitch("no-sandbox");
 }
+
+// Windows 要把进程归到同一个 AppUserModelID 上，任务栏图标与通知才不会分裂成两个
+if (process.platform === "win32") app.setAppUserModelId("com.local.mynovel");
 
 app.whenReady().then(() => {
   createWindow();

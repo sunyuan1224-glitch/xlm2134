@@ -18,6 +18,7 @@
  */
 import { api } from "../api";
 import { useStore } from "../store";
+import { basename } from "./chapter";
 import { missingBookOutlines, normalizeDir, type ChapterOrder } from "./order";
 import { BOOK_OUTLINE_NAME, OUTLINE_DIR } from "./volume";
 
@@ -192,7 +193,7 @@ export async function ensureBookOutlines(
   for (const outlinePath of missing) {
     // missingBookOutlines 只会给出「书文件夹/outline/总纲.md」，不会再有根级那份
     const book = outlinePath.slice(0, -(OUTLINE_SUFFIX.length + 1));
-    const name = book || root.split("/").pop() || "未命名";
+    const name = book || basename(root) || "未命名";
     try {
       await api.createFile(root, outlinePath, `# ${name}\n\n`);
       created.push(outlinePath);

@@ -3,7 +3,7 @@ import { build } from 'esbuild';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const FILES = ['./export-blocks.test.ts', './docx-export.test.ts', './epub-export.test.ts'];
 const dir = await mkdtemp(join(tmpdir(), 'mynovel-docx-epub-test-'));
@@ -11,7 +11,7 @@ try {
   for (const file of FILES) {
     const outfile = join(dir, file.replace(/\.ts$/, '.mjs'));
     await build({
-      entryPoints: [new URL(file, import.meta.url).pathname],
+      entryPoints: [fileURLToPath(new URL(file, import.meta.url))],
       outfile,
       bundle: true,
       platform: 'node',

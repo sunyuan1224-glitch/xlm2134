@@ -65,6 +65,37 @@ async function rejects(promise, msg) {
   }
 }
 
+/*
+ * 前置：本机能不能建符号链接。
+ *
+ * 这套用例里「工作区外逃」的防护全靠符号链接来验（父目录链接、冒充文件的链接、
+ * 预置的临时名链接），Windows 上普通用户默认建不了（要管理员，或者打开
+ * 「设置 → 系统 → 开发者选项 → 开发人员模式」）。没有这项能力就等于这批边界没测，
+ * 所以这里开头直接判定并给出可操作提示，而不是跑到第 105 行抛一个 EPERM 就没了。
+ * Linux / macOS 上恒为 true，行为与从前一致。
+ */
+{
+  const probeDir = tempDir();
+  let canSymlink = true;
+  try {
+    fs.symlinkSync(path.join(probeDir, "target"), path.join(probeDir, "probe"));
+  } catch {
+    canSymlink = false;
+  }
+  cleanup(probeDir);
+  if (!canSymlink) {
+    console.error(
+      [
+        "✗ 本机不允许普通用户创建符号链接，工作区外逃的用例无法运行。",
+        "  Windows：设置 → 系统 → 开发者选项 → 打开「开发人员模式」（需管理员），",
+        "           或用管理员身份运行终端；之后重跑 npm run test:vault。",
+        "  这批用例不能跳过——符号链接外逃正是它们要守的边界。",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+}
+
 /* ------------------------------------------------------------------ 1. 路径规范化 */
 
 {
@@ -542,6 +573,41 @@ async function rejects(promise, msg) {
   const orphans = [...backend].filter((c) => !frontend.has(c));
   if (orphans.length) console.log(`  · 后端有而前端没调的命令：${orphans.sort().join(", ")}`);
   ok(`前端命令 ↔ 后端命令（${frontend.size} 个）`);
+}
+
+/* ------------------------------------------------------------------ 13. 换行归一 */
+
+{
+  /*
+   * 编辑器（CodeMirror）的文档模型里没有 `\r`：给它 "a\r\nb"，它存的是 "a\nb"。
+   * 所以 CRLF 的手稿必须在读入口就归一，否则：① 一打开就被标成「未保存」，
+   * 顺手按 Ctrl+S 会白重写整份稿子；② 拆章拿光标的 UTF-16 偏移去切字节，
+   * 偏移会少掉前面每一个 `\r`，切点落进汉字中间。Windows 上手稿基本都是 CRLF。
+   */
+  const root = tempDir();
+  const crlf = "# 第一章\r\n\r\n她在雨里站了很久。\r\n第二行\r\n";
+  fs.writeFileSync(path.join(root, "crlf.md"), crlf);
+
+  const fc = await vault.readFile(root, "crlf.md");
+  check(fc.content === "# 第一章\n\n她在雨里站了很久。\n第二行\n", `CRLF 应归一到 LF：${JSON.stringify(fc.content)}`);
+  check(!fc.content.includes("\r"), "读出来的正文里不该还有 \\r");
+  check(
+    fs.readFileSync(path.join(root, "crlf.md"), "utf8") === crlf,
+    "只读不能动盘上的文件（字节原样）",
+  );
+  check(vault.toLF("a\rb") === "a\nb", "单独的 \\r 也要归一");
+  check(vault.toLF("# 标题\n") === "# 标题\n", "LF 原样返回，不做多余改动");
+
+  // 拆章：光标偏移是编辑器（LF 文档）给的，落到 CRLF 文件上也必须切在同一个字后面
+  await vault.createFile(root, "第二章.md", "# 第二章\r\n\r\n上半段\r\n下半段\r\n");
+  const res = await vault.splitAtCursor(root, "第二章.md", "# 第二章\n\n上半段".length, "下");
+  const up = fs.readFileSync(vault.safeJoin(root, res.firstPath), "utf8");
+  const down = fs.readFileSync(vault.safeJoin(root, res.secondPath), "utf8");
+  check(up.includes("上半段") && !up.includes("下半段"), `切点不该跑进下半段：${JSON.stringify(up)}`);
+  check(down.startsWith("\n下半段"), `下篇应以「下半段」开头：${JSON.stringify(down)}`);
+
+  ok("CRLF 手稿的换行归一");
+  cleanup(root);
 }
 
 /* ------------------------------------------------------------------ */

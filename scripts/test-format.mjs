@@ -3,13 +3,13 @@ import { build } from 'esbuild';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const dir = await mkdtemp(join(tmpdir(), 'mynovel-format-test-'));
 try {
   const outfile = join(dir, 'format.test.mjs');
   await build({
-    entryPoints: [new URL('./format.test.ts', import.meta.url).pathname],
+    entryPoints: [fileURLToPath(new URL('./format.test.ts', import.meta.url))],
     outfile,
     bundle: true,
     platform: 'node',

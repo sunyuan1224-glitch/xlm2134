@@ -23,6 +23,7 @@ import { Editor } from "./editor/Editor";
 import { PaperCompanion } from "./components/PaperCompanion";
 import { PaperWidget } from "./components/PaperWidget";
 import { splitCurrent, createNextChapter } from "./lib/chapterOps";
+import { basename } from "./lib/chapter";
 import { ImmersiveEditor } from "./components/ImmersiveEditor";
 import { ContextMenu } from "./components/ContextMenu";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -301,7 +302,7 @@ export default function App() {
   const hasSelection = !!menu && menu.sel.to > menu.sel.from;
 
   const docTitle = useMemo(() => {
-    if (!activePath) return root ? root.split("/").pop()! : "MyNovel";
+    if (!activePath) return root ? basename(root) : "MyNovel";
     // 优先用章列表里的标题（与文件树、EPUB 目录同一来源），拿不到再退回文件名
     const meta = chapters.find((c) => c.path === activePath);
     return meta?.title ?? activePath.split("/").pop()!.replace(/\.md$/, "");
@@ -522,7 +523,7 @@ export default function App() {
     const bookOutlinePath = st.files.filter(isBookOutlinePath).sort()[0];
     const bookTitle = bookTitleFrom(
       bookOutlinePath ? outlineTexts[bookOutlinePath] : undefined,
-      st.root.split("/").pop() || "未命名",
+      st.root ? basename(st.root) : "未命名",
     );
 
     try {
@@ -898,7 +899,7 @@ export default function App() {
             {status !== "就绪" && <p className="welcome-status">{status}</p>}
             <p className="welcome-hint">
               {isDesktop()
-                ? "建议选一个专门放小说的文件夹，如 ~/小说"
+                ? "建议选一个专门放小说的文件夹（如 文档/小说），别把源码目录当工作区"
                 : "当前是浏览器预览，目录访问需要启动桌面版：npm run app"}
             </p>
             <p className="welcome-hint">

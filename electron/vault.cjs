@@ -20,6 +20,12 @@ const path = require("node:path");
 /** 源文件扩展名：导出只写产物，绝不允许覆盖这些 */
 const SOURCE_EXTENSIONS = ["md", "markdown", "mdx", "txt"];
 
+/**
+ * 相对路径的分隔符。Linux 上 `\` 是文件名里合法的普通字符，只有 Windows 把它当分隔符
+ * （Rust 的 Component 也是这么分的）。所以这里按平台分，Linux 的行为与原来完全一致。
+ */
+const REL_SEP_RE = process.platform === "win32" ? /[\\/]/ : /\//;
+
 /** 二进制导出单次允许写入的最大字节数（与 Rust 侧同一个量级） */
 const MAX_BINARY_EXPORT_BYTES = 256 * 1024 * 1024;
 
@@ -34,15 +40,19 @@ function inside(target, root) {
 /**
  * 工作区相对路径 → 绝对路径。任何一段是 `..`、或者是绝对路径、或者整条退化成根，都拒绝。
  * 最后那条很关键：否则 deleteEntry(root, "") 能把整个工作区删掉。
+ *
+ * 分隔符必须是两种都切（Windows 上 `..\..\x` 与 `../../x` 等价）；
+ * 只切 "/" 的话 `..\..\windows\win.ini` 会被当成一整段普通文件名，
+ * 虽然后面 ensureParentInside 还能兜住，但这道闸门本身就是安全边界，不能破。
  */
 function safeJoin(root, rel) {
   if (typeof rel !== "string" || rel.trim() === "") throw new Error("路径为空");
   if (path.isAbsolute(rel)) throw new Error(`非法路径: ${rel}`);
-  const parts = rel.split("/").filter((s) => s !== "" && s !== ".");
+  const parts = rel.split(REL_SEP_RE).filter((s) => s !== "" && s !== ".");
   if (parts.length === 0) throw new Error(`非法路径: ${rel}`);
   for (const p of parts) {
     // Rust 侧只认 Normal 分量：`..` 及任何根前缀都会被拒
-    if (p === ".." || p === "/" || p.includes("\0")) throw new Error(`非法路径: ${rel}`);
+    if (p === ".." || p === "/" || p === "\\" || p.includes("\0")) throw new Error(`非法路径: ${rel}`);
   }
   return path.join(root, ...parts);
 }
@@ -187,13 +197,29 @@ async function scanWorkspace(root) {
 
 /* ------------------------------------------------------------------ 读写 */
 
+/**
+ * 换行统一成 LF 之后再交给上层。
+ *
+ * 编辑器（CodeMirror）的文档模型里没有 `\r`：把 "a\r\nb" 交给它，它存的是 "a\nb"。
+ * 于是 CRLF 的手稿一打开就和盘上那份对不上，store 按「正文变了」把它标成未保存——
+ * 用户没敲一个字，随手按一下 Ctrl+S 就会把整份稿子重写一遍；拆章更麻烦，
+ * 它拿光标的 UTF-16 偏移去切字节，偏移量会少掉前面每一个 `\r`，切点落到正文中间。
+ * Windows 上用记事本之类工具存出来的 .md 基本都是 CRLF，所以这个归一是必须的。
+ *
+ * 只在读入口做：写盘一律写 LF（编辑器本来就是 LF），
+ * 与「用户改一下就保存」的结果一致，不会凭空改盘上的文件。
+ */
+function toLF(text) {
+  return text.includes("\r") ? text.replace(/\r\n?/g, "\n") : text;
+}
+
 async function readFile(root, rel) {
   const full = safeJoin(root, rel);
   if (!fs.existsSync(full)) return null;
   await ensureRealpathInside(root, full);
   const st = await fsp.stat(full);
   if (!st.isFile()) return null;
-  const content = await fsp.readFile(full, "utf8");
+  const content = toLF(await fsp.readFile(full, "utf8"));
   return { path: rel, content };
 }
 
@@ -665,6 +691,7 @@ module.exports = {
   SOURCE_EXTENSIONS,
   MAX_BINARY_EXPORT_BYTES,
   safeJoin,
+  toLF,
   ensureParentInside,
   ensureRealpathInside,
   inside,
