@@ -2,8 +2,8 @@
  * 真实 GTK/WebKit 下对**补丁后的 Editor 组件本体**做集成测试（React + 真实 CodeMirror + 真实 DOM）：
  *
  *  A) 组合态期间 sourceMode 切换（Ctrl+/ 那条路径，Compartment.reconfigure）被推迟：
- *     组合期间装饰不重配、view.compositionStarted 保持、正文一字不丢；
- *     组合结束后重配才落下（预览装饰消失 = 真的切到源码模式）。
+ *     组合期间不重配、view.compositionStarted 保持、正文一字不丢；
+ *     组合结束后重配才落下（判据是「有没有新的 dispatch」，为什么不用装饰数量见 spyDispatches）。
  *  B) 组合态期间打字机模式不再滚动：组合中的选择变化不产生 scrollIntoView，
  *     焦点与滚动位置稳定；组合结束后打字机对齐补上（焦点仍在编辑器里）。
  *  C) 组合态期间外部正文回写被推迟；结束后按「不丢本地文字」的规则合并/拒绝。
@@ -111,7 +111,30 @@ function mount(): Harness {
   };
 }
 
-/** 预览模式下的实时预览装饰数量（源码模式下为 0）。 */
+/*
+ * 「切到源码模式了没」怎么判：**不能用装饰数量**。
+ *
+ * 这条用例原来等的是 `decorations(view) === 0`，但源码模式**不是**没有装饰 ——
+ * lineHeightHints（逐行高度提示，给源码滚动条兜高的那个）也往 EditorView.decorations 里
+ * 塞一份，两种模式都是 1，所以那个条件永远等不到，用例一直卡在超时上（跟输入法无关）。
+ * 也不能数 `.cm-lp-rendered`：这个夹具的光标在中部那一大段里，而「光标所在块显示源码」，
+ * 视口里根本没有渲染出来的预览块。
+ *
+ * 直接盯**动作**：推迟的重配是靠 view.dispatch 落下去的（见 Editor.tsx 的 whenImeIdle），
+ * 所以「组合期间不该有 dispatch、组合结束后该来一次」既好观察，又正好是要验的东西。
+ * 测试自己那几次 dispatch 会先记下基数再比增量。
+ */
+function spyDispatches(view: EditorView): () => number {
+  const calls: number[] = [];
+  const original = view.dispatch.bind(view);
+  (view as unknown as { dispatch: (...a: unknown[]) => unknown }).dispatch = (...args: unknown[]) => {
+    calls.push(Date.now());
+    return (original as unknown as (...a: unknown[]) => unknown)(...args);
+  };
+  return () => calls.length;
+}
+
+/** 实时预览的装饰数量（预览 / 源码模式都可能 &gt; 0，别拿它当模式判据，见上面）。 */
 function decorations(view: EditorView): number {
   let count = 0;
   for (const set of view.state.facet(EditorView.decorations)) {
@@ -155,8 +178,9 @@ async function run() {
   view.dispatch({ selection: { anchor: middle }, effects: EditorView.scrollIntoView(middle, { y: "center" }) });
   await frame();
   await waitFor(() => decorations(view) > 0, "live preview decorations");
-  const previewDecos = decorations(view);
-  report("NOTE: editor mounted, live preview decorations = " + previewDecos + ", doc length = " + view.state.doc.length);
+  const dispatchCount = spyDispatches(view);
+  const dispatchesBeforeComposition = dispatchCount();
+  report("NOTE: editor mounted, live preview decorations = " + decorations(view) + ", doc length = " + view.state.doc.length);
 
   const cdom = view.contentDOM;
 
@@ -189,8 +213,8 @@ async function run() {
   await frame();
   await delay(150);
   if (!view.compositionStarted) throw new Error("composition must still be alive after a mode switch request");
-  if (decorations(view) !== previewDecos)
-    throw new Error("mode reconfigure must be deferred while composing (decorations changed mid-composition)");
+  if (dispatchCount() !== dispatchesBeforeComposition)
+    throw new Error("mode reconfigure must be deferred while composing (a dispatch went through mid-composition)");
   if (view.scrollDOM.scrollTop !== scrollBefore)
     throw new Error("typewriter scroll must not fire while composing");
   report("NOTE: source-mode switch deferred during preedit, decorations and scroll unchanged");
@@ -202,7 +226,13 @@ async function run() {
   textInput(cdom, "beforeinput", "insertFromComposition", "你");
   view.dispatch({ changes: { from: commit, insert: "你" } });
   textInput(cdom, "input", "insertFromComposition", "你");
-  await waitFor(() => decorations(view) === 0, "deferred mode switch to land after composition");
+  const dispatchesAtCommit = dispatchCount(); // 测试自己那次改文档的 dispatch 之后起算
+  await waitFor(() => dispatchCount() > dispatchesAtCommit, "deferred mode switch to land after composition");
+  if (decorations(view) === 0)
+    throw new Error(
+      "源码模式下 decorations 不该是 0 —— lineHeightHints（逐行高度提示）也挂装饰；" +
+        "这条要是红了，说明有人删了它，请把上面的判据说明一起改掉",
+    );
   if (view.state.doc.toString()[commit] !== "你") throw new Error("committed character must stay in the document");
   if (view.state.selection.main.head !== selectionBefore + 1 && !view.state.doc.toString().includes("你"))
     throw new Error("committed character lost");
@@ -212,7 +242,8 @@ async function run() {
    * B) 组合态期间打字机不滚，结束后补上
    * ---------------------------------------------------------------- */
   app.setSource(false);
-  await waitFor(() => decorations(view) > 0, "back to preview mode");
+  const dispatchesBeforeBack = dispatchCount();
+  await waitFor(() => dispatchCount() > dispatchesBeforeBack, "back to preview mode (reconfigure dispatched)");
   const lineAfter = view.state.doc.line(305);
   view.dispatch({ selection: { anchor: lineAfter.from } });
   await frame();

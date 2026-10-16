@@ -43,6 +43,10 @@ window.set_default_size(900, 700)
 window.add(view)
 window.connect("destroy", lambda *_: Gtk.main_quit() if Gtk.main_level() else None)
 window.show_all()
+# 让窗口管理器真的激活它。没有这一句，夹具窗口可能只是「显示出来」而没有焦点，
+# document.hasFocus() 就是 false —— 需要真实焦点的用例（输入法组合、合成键盘事件、
+# 打字机滚动）会当场判「不可聚焦」，而失败原因和被测代码毫无关系。
+window.present()
 view.load_uri(Path(sys.argv[1]).resolve().as_uri())
 
 def timeout():
