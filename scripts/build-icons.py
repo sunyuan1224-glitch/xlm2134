@@ -12,14 +12,12 @@
 母版插画的内容与颜色完全不动。
 
 输出（均为 RGBA，四角 alpha 精确为 0）：
-    src-tauri/icons/icon.png         512x512   ← bundle.icon 进包的那个
-    src-tauri/icons/128x128@2x.png   256x256
-    src-tauri/icons/128x128.png      128x128
-    src-tauri/icons/64x64.png         64x64
-    src-tauri/icons/32x32.png         32x32
-    src-tauri/icons/icon.ico          Windows 多尺寸（256/128/64/48/32/16）
+    build/icon.png      512x512  ← electron-builder 的 linux.icon 用的就是它
+    build/icon.ico      Windows 多尺寸（256/128/64/48/32/16，留着备用）
 
-母版：src-tauri/icons/source/icon-master.png（满幅方形插画，勿换成 SVG）。
+换掉 Tauri 之后不再需要那一套多尺寸 PNG：Electron 从一张 512 源图自己派生各档尺寸。
+
+母版：source-assets/icon-master.png（满幅方形插画，勿换成 SVG）。
 依赖：Python 3 + Pillow，无其他依赖。
 """
 
@@ -28,8 +26,8 @@ import sys
 from PIL import Image, ImageChops, ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ICONS = os.path.join(ROOT, "src-tauri", "icons")
-MASTER = os.path.join(ICONS, "source", "icon-master.png")
+ICONS = os.path.join(ROOT, "build")
+MASTER = os.path.join(ROOT, "source-assets", "icon-master.png")
 
 # 14/88 来自 wemeet.svg 的 rx=14 / 外框 88（见文件头说明）
 RADIUS_RATIO = float(os.environ.get("RADIUS_RATIO", str(14 / 88)))
@@ -38,10 +36,6 @@ SUPERSAMPLE = 8
 
 PNG_TARGETS = {
     "icon.png": 512,
-    "128x128@2x.png": 256,
-    "128x128.png": 128,
-    "64x64.png": 64,
-    "32x32.png": 32,
 }
 ICO_SIZES = [256, 128, 64, 48, 32, 16]
 ALL_SIZES = sorted(set(PNG_TARGETS.values()) | set(ICO_SIZES))

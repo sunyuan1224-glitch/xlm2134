@@ -2,7 +2,9 @@
 
 MyNovel 是一款**本地优先**的轻量小说写作桌面应用。正文就是普通的 Markdown 文件，作品资料是同一目录下的人类可读 JSON——不依赖云端账户、不需要数据库、不联网。
 
-技术栈：Tauri 2 + React 19 + TypeScript + Rust + CodeMirror 6。当前版本 **v0.1.0**，分发形态是 Arch Linux 上的单文件 AppImage（另有 deb / rpm）。
+技术栈：Electron + React 19 + TypeScript + CodeMirror 6（后端是 `electron/vault.cjs`）。当前版本 **v0.2.1**，分发形态是 Arch Linux 上的单文件 AppImage。
+
+> **2026-10 换掉了 WebKitGTK**：原来跑在 Tauri 2 + WebKitGTK 上，那套在这台机器只给 31fps；换成 Electron（Chromium）后实测 **180fps**。原因与测量过程见下面「渲染帧率」一节。前端一行未改，只重写了后端。
 
 ## 打开软件
 
@@ -10,7 +12,7 @@ MyNovel 是一款**本地优先**的轻量小说写作桌面应用。正文就�
 
 ```bash
 cd <项目目录>
-./src-tauri/target/release/bundle/appimage/MyNovel_<版本>_amd64.AppImage
+./release/MyNovel_<版本>_amd64.AppImage
 ```
 
 从别处复制过来后若提示权限不足，先 `chmod +x` 那个文件。仓库里还没有构建产物的话，按下面「开发与重新打包」跑一次 `npm run app:build`。
@@ -19,7 +21,7 @@ cd <项目目录>
 
 > **建议**：先在工作区根目录右键「新建书」，再进书里建卷和章。**纲要跟着书文件夹走**，只有属于某本书的章才有总纲 / 卷纲 / 章节纲要。章也可以直接放在工作区根目录（不建书、不设卷），照样能写能导出，只是这类章没有纲要。
 
-`npm run dev` 起的浏览器预览拿不到 Tauri 的原生文件系统，选不了工作区；要调桌面版用 `npm run app`。
+`npm run dev` 起的浏览器预览拿不到原生文件系统，选不了工作区；要调桌面版用 `npm run app`（它同时起 Vite 和 Electron）。
 
 ## 界面一览
 
@@ -30,7 +32,9 @@ cd <项目目录>
 - **正文区** —— 居中约 752px 栏宽（与 Typora 的 `#write` 一致），上方多标签页，有未保存改动时标签栏出现「保存」按钮。
 - **右侧小说工作台**（默认收起，宽 340，可拖 240–640）—— 伏笔 / 时间线 / 设定 / 校对四个面板，导航按「创作 / 校对」分组收进下拉菜单，展开状态与上次的面板会记住；`Ctrl+Shift+B` 或右缘竖条把手召回。
 - **底部状态栏** —— 左边是工作区名与当前文件相对路径；右边是 `行 X 列 Y`、选区长度、本章字数（点一下换统计口径）、全书字数，以及 `● N 未保存` 或最近一条状态文本。
-- **伴读立绘** —— 稿纸右侧的人物，随编辑区宽度贴右缘或缩到右下角；在「关于 MyNovel」里点应用图标可以开关。
+- **弹窗里的小人** —— 设置 / 关于 / 帮助等所有弹窗右下角那个「思考中」的角色，与挂件用的是**同一张图**，整块待在弹窗右侧之外、与边框留缝；窗口窄到放不下（<860px）时整块隐藏。
+- **伴读立绘** —— 稿纸**左侧**的人物（素材已水平镜像，面朝正文），贴着左侧栏站；左空白不够时缩到编辑区左下角。因为它是编辑区的子元素，左侧栏收起 / 拖宽时它跟着一起动，不需要额外监听。在「关于 MyNovel」里点应用图标可以开关。
+- **小鸭挂件** —— 默认待在右下角的可点击人物：点一下压扁并叫一声，**左键按住可以拖着走**。拖动范围限制在正文区内：上不过顶部菜单栏、下不过状态栏、左不压左侧栏（与伴读立绘同一条线），松手吸附贴边，落点记在 `localStorage`（菜单里可「回到角落」）。右上角的菜单按钮跟着挂件等比缩放（18–32px），所以调到最小档也不会盖住人物；按钮可隐藏，改右键人物唤出。菜单里能拖「大小」滑块调尺寸、调音量、关音效、试听。**点一下人物会冒气泡**：大字是「今日已写」、小字是「平均速度」，5 秒自动收起。气泡的动效照参考项目复刻了两处：进场是**分段弹出**（尾巴先冒 → 本体带一点过冲地鼓出来 → 文字最后浮现，不是一次淡入），并且气泡和人物**同处一个被压扁的外壳里**，所以按住人物时它跟着一起抖；配色整套换成主题的粉白玫红。**已经显示着的时候再点人物不会重建气泡**（重建会把进场动画连文字一起重播，看着像被重置），只更新数字；**点气泡本身**会把正文交叉淡化换成彩蛋「欧金金…」（那行字在气泡里水平垂直都居中），再点切回来。开关在「视图 → 挂件 → 小鸭挂件」。
 
 ## 功能清单
 
@@ -199,15 +203,21 @@ cd <项目目录>
 
 ```bash
 npm install
-npm run app        # 启动 Tauri 桌面开发版
+npm run app        # 启动 Electron 桌面开发版（Vite + Electron 一起起）
 npm run build      # 检查 TypeScript 并构建前端
-npm run app:build  # 构建桌面程序与安装包
+npm run app:build  # 构建前端 + 出单文件 AppImage
 npm run icons      # 重新生成应用图标（需要 Python 3 + Pillow）
 ```
 
-打包产物在 `src-tauri/target/release/bundle/`：`appimage/` 供本机 Arch Linux 使用，`deb/` 和 `rpm/` 用于相应发行版。这些不是 Arch 的 pacman / AUR 包。
+打包产物在 `release/`：`MyNovel_<版本>_amd64.AppImage`（单文件）与 `linux-unpacked/`（未打包目录）。这不是 Arch 的 pacman / AUR 包。
 
-Rust 版本要求见 `src-tauri/Cargo.toml` 的 `rust-version`。
+`electron-builder` 默认从 GitHub 取运行时；GitHub 不通时用镜像：
+
+```bash
+ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ \
+ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ \
+npm run app:build
+```
 
 ### 发版
 
@@ -215,7 +225,7 @@ Rust 版本要求见 `src-tauri/Cargo.toml` 的 `rust-version`。
 scripts/release.sh 0.1.1 [release 说明文件]
 ```
 
-一次做完：同步四处版本号（`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`AboutDialog` 里的 `VERSION`）→ 跑测试 → 离线打包 → 覆盖安装到 `~/AppImages/mynovel.appimage`（备份只留最近一个，旧的送回收站）→ 提交并打 tag → 推送 → 用 `gh` 建 GitHub release，**只挂 AppImage**。
+一次做完：同步两处版本号（`package.json`、`AboutDialog` 里的 `VERSION`）→ 跑测试 → 打包 → 覆盖安装到 `~/AppImages/mynovel.appimage`（备份只留最近一个，旧的送回收站）→ 提交并打 tag → 推送 → 用 `gh` 建 GitHub release，**只挂 AppImage**。
 
 前置：工作区干净、`gh` 已 `auth login`。GitHub 直连不通，脚本默认走 `127.0.0.1:7897` 代理。
 
@@ -241,12 +251,104 @@ node scripts/test-export-external.mjs  # 用 python3 zipfile + xmllint 从容器
 node scripts/test-ime.mjs              # 输入法守卫与外部同步合并，需要 DOM
 ```
 
-需要真实 GTK / WebKit 的用例（`test-browser`、`test-complex-browser`、`test-ime-webkit`、`test-ime-editor`、`test-docx-epub-webkit`、`test-theme-ui`、`test-shortcuts-ui`、`test-volume-ui`）同样用 `node scripts/test-*.mjs` 运行，另有依赖 Python GI 的 `scripts/test-*-webkit.py` 驱动器；这些需要显示环境与 `python3`。
+需要真实 GTK / WebKit 的用例（`test-browser`、`test-complex-browser`、`test-ime-webkit`、`test-ime-editor`、`test-docx-epub-webkit`、`test-theme-ui`、`test-shortcuts-ui`、`test-volume-ui`、`test-widget-ui`、`test-companion-ui`）同样用 `node scripts/test-*.mjs` 运行，另有依赖 Python GI 的 `scripts/test-*-webkit.py` 驱动器；这些需要显示环境与 `python3`。
 
-Rust 侧：`cd src-tauri && cargo test`（覆盖路径校验、符号链接防护、原子写入、base64 等）。
+后端：`npm run test:vault`（`electron/vault.cjs` 的安全不变量——路径校验、符号链接防护、原子写入、base64 严格解码、导出不许覆盖手稿，共 11 组；这批用例是从原 Rust 侧的 `cargo test` 逐条搬过来的）。
+
+### 气泡的两个动效（都照参考项目）
+
+1. **分段弹出**：参考项目的气泡由三层形状组成（两个小尾巴泡 + 主体），打开时按 `0s / .13s / .26s` 依次从
+   `scale(.7)` 弹起，文字再晚一步（`.36s`）淡入。这里用同一条思路排三段——尾巴 `0s` → 本体 `.07s`（带 `1.06` 的过冲回弹）
+   → 文字 `.2s`。实测（真 Electron 逐帧采样）：不进场的瞬移，而是缩放走过 **35 档**、透明度 20 档，最大缩放 **1.060**，
+   文字起始确实隐藏。
+2. **跟着人物一起抖**：参考项目把气泡和鲸鱼本体放在**同一个被压扁的 `div`** 里（`pressDown` 时对该 div 施加
+   `scaleY(.88) scaleX(1.05)`），气泡自然跟着抖。这里同样把气泡放进 `.pw-figure`，压扁作用在这一层。
+   实测按住时气泡位移 **35px**。手感也照它改成了**按下就压、松手回弹**（原来是在松手后才压一下）。
+
+## 写作统计（气泡里那两个数）
+
+- **今日已写** = 今天字数**净增的累加**：每次全书总字数比上次多，就把多出来的累加；变少（删了东西）不动它。
+  不用「当前总数 − 今天开始时的总数」，那样删一段再写回来就不算了，而且换工作区会把基准冲掉、一下算出个天文数字。
+  换工作区时只重建基准、**不**累加（识别依据是工作区路径）。
+- **平均速度** = 今日已写 ÷ 活跃时长。活跃时长按「两次输入间隔不超过 90 秒就累加」来记，开着窗口去吃饭不会被摊平；
+  活跃不足 1 分钟不显示速度（显示 `—`），免得刚写三秒就报出几万字/时。
+
+- **数字是实时的**：气泡开着的时候你继续打字，「今日已写」会跟着涨。实现上不是订阅正文——数字的更新发生在
+  `StatusBar` 的 effect 里，比挂件那次渲染晚一步，订阅会永远慢一拍。改成「开着气泡时每 200ms 重渲染一次、
+  渲染时现读 `getToday()`」：气泡最多活 5 秒（约 25 次 setState），关着时一次都不跑，按键路径上一个字节的开销都没有。
+  实测（真 WebKit）：往正文里续写 → 章节字数防抖 400ms → `StatusBar` 全书字数 → 挂件刷新，数字从 0 涨起来。
+- **菜单里有「重置今日已写」**（「写作统计」分组）：把今天的字数与活跃时长一起清零并立即落盘——只清字数不清时长的话，
+  速度会被之前那段时长摊平得没法看。点完顺手把气泡叫出来显示 0，不然菜单一关看不出成没成。
+
+数据存 `localStorage` 的 `mynovel:writing-stats`，按天分桶（为以后的连续天数 / 热力图留了路）。
+两个钩子都不重：`store.setContent` 每次按键只调一次 `noteEdit()`（几次算术 + 节流 2 秒才落盘，按键路径上不碰
+localStorage），全书字数则由 `StatusBar` 喂过去——那里本来就算着，不必再扫一遍文稿。
+
+**已知口径差**：喂进来的「全书字数」里当前章用 `countWords`、其他章用 `countQuick`，两者对中文正文逐字一致
+（带 frontmatter、代码块、中英混排都实测过），但在 `<!-- nw:no -->` 屏蔽区与假名/韩文上会分叉；真分叉时，
+加载后第一次输入会把差值一次性记成「今日已写」。中文正文下不会发生，所以暂不动那边。
+
+## 渲染帧率（为什么从 Tauri 换到了 Electron）
+
+这台开发机：NVIDIA RTX 4060 + niri/Wayland + **180Hz** 屏。原来跑 Tauri 2 + WebKitGTK 时，**整个应用**只有 **31fps**——这就是「人物模型卡顿」的根因，而且一直如此（与挂件无关）。
+
+### 换之前：WebKitGTK 只有 31fps
+
+- 在**真实应用**里量 rAF：均值 31.96ms、p50 32、p95 33、max 33 —— 不是偶发掉帧，是稳定的 30fps 上限；
+- 同一进程里 GTK 自己的帧时钟是 **60Hz**（16.46ms，很稳），WebKit 只回调了它的一半；
+- 逐个排查**全部无效**：纯软件渲染（`LIBGL_ALWAYS_SOFTWARE=1` / `llvmpipe`）、`WEBKIT_DISABLE_DMABUF_RENDERER`、`WEBKIT_DISABLE_COMPOSITING_MODE`、`WEBKIT_USE_SKIA_FOR_COMPOSITION`、`WEBKIT_DMABUF_RENDERER_FORCE_SHM`、`WEBKIT_FORCE_VBLANK_TIMER`、`WEBKIT_DISPLAY_REFRESH_THROTTLE_FPS`、`GDK_BACKEND=x11`、`__GL_SYNC_TO_VBLANK=0`；连 `hardware-acceleration-policy` 的三档都试了；
+- 连**纯色方块**也一样 31.1fps → 与页面内容无关，是引擎的帧调度；
+- `visibilityState === "visible"`、`hasFocus() === true` → 不是「窗口不可见」的节流；
+- 一个可上报的线索：**GDK 读到的刷新率是 `180003 Hz`**（真值 180，差 1000 倍，niri 很可能按 mHz 上报）。
+
+### 换之后：Chromium 179.9fps
+
+同一台机器、同一个 niri、同一块屏，用同一套 rAF 探针量：
+
+| 引擎 | 静止 | CSS 动画中 |
+|---|---|---|
+| WebKitGTK（原 Tauri） | 31.1 Hz | 31.1 Hz |
+| Gecko（Firefox） | 168.5 Hz | 176.5 Hz |
+| **Chromium（Electron 44）** | **169.4 Hz** | **180.0 Hz** |
+
+所以问题在 WebKitGTK 而不在机器：Gecko 和 Chromium 都能吃满 180Hz。**打包后的 AppImage 实测 179.9fps**（编辑器已打开、挂件在场）。
+
+### 顺带救回来的东西：菜单之间的过渡
+
+菜单面板在菜单之间「滑过去」的过渡，当年是被**故意删掉**的（`shell.css` 里留着原因：
+光标扫过菜单栏时动画每隔几毫秒被下一次位置变更打断，在 WebKit 下明显顿挫）。换引擎后
+把它加回来了——只动 `transform / width / height`（合成器自己插值），打开时淡入一次，
+**没有**恢复当年那套 `requestAnimationFrame` 双帧状态机（Chromium 会从当前实际位置平滑
+改道，光标的连续悬停天然就是连续的）。
+
+实测（在真实 Electron 进程里逐帧采样：在菜单之间来回悬停 6 次）：
+
+| | WebKitGTK（旧夹具） | Chromium（现在） |
+|---|---|---|
+| 过渡中面板经过的位置数 | 1（瞬移） | **39**（真的在插值） |
+| 帧间隔 | 32ms ≈ 31fps | **5.55ms ≈ 180fps** |
+| 超过 20ms 的帧 | — | **0** |
+
+### 迁移代价
+
+- 前端 **15,808 行**一行未改 —— 因为后端调用本来就都收在 `src/api.ts`，换引擎只改了那一个文件，外加 `App.tsx` 里两行（全屏、打开外链）；
+- 后端 **1,525 行 Rust → `electron/vault.cjs`**（约 690 行）；Rust 侧的安全不变量连同它的 `cargo test` 一起搬成了 `scripts/test-vault.mjs`；
+- 体积：AppImage **108MB → 125.7MB**。注意原来的 AppImage 里光 `libwebkit2gtk` + `libjavascriptcoregtk` 就占 135MB —— 也就是说这个应用本来就在分发一整套浏览器引擎，只是那套慢。
 
 ## 应用图标
 
-图标母版是 `src-tauri/icons/source/icon-master.png`（满幅方形人物插画），`scripts/build-icons.py` 只给它套一层抗锯齿的圆角正方形透明蒙版，生成 `icon.png`(512)、`128x128@2x.png`、`128x128.png`、`64x64.png`、`32x32.png` 和多尺寸 `icon.ico`；插画本身的内容与颜色不做任何改动。
+图标母版是 `source-assets/icon-master.png`（满幅方形人物插画），`scripts/build-icons.py` 只给它套一层抗锯齿的圆角正方形透明蒙版，生成 `build/icon.png`(512，`electron-builder` 的 `linux.icon` 用的就是它) 与 `build/icon.ico`；插画本身的内容与颜色不做任何改动。
 
 圆角比例固定为 `14/88 ≈ 15.91%`（512px 时 r ≈ 81.45px）。需要换弧度时改脚本里的 `RADIUS_RATIO`（或临时用 `RADIUS_RATIO=0.2 npm run icons`）；脚本每次都从满幅母版重新生成，不会叠加圆角。
+
+## 挂件素材
+
+小鸭挂件的人物图由 `scripts/prepare-widget-image.py` 从一张满幅黑底立绘抠出来（`python3 scripts/prepare-widget-image.py source-assets/widget-girl.png src/assets/widget-girl.png 400`）。源图背景是纯黑（实测 ≤ 1），人物自身最暗处也在 163 上下，所以脚本用**从四边洪水填充**而不是全局亮度阈值——只有和画面边缘连通的黑色会被清掉，人物内部的深色描边与徽章动不到；之后再做一次颜色外渗（避免缩放出黑边）与 1px 的 alpha 收缩（去掉反锯齿残留），裁紧补方后输出 400×400。换图重跑即可。
+
+音效 `src/assets/duck-squeak.mp3` 由用户提供（免费素材）。
+
+素材**原件**统一放在 `source-assets/`（不参与打包，见那里的 README）：挂件人物原件与图标母版。
+随包的只有 `src/assets/` 与 `build/` 里的产物。
+
+`src/assets/dialog-thinker.png` **已删除**：弹窗里的小人改用上面那张挂件人物图（两张形象统一），
+文件不再被任何代码引用，所以连带文件一起清掉了。

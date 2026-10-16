@@ -6,8 +6,12 @@ import { useStore } from "../store";
 const FALLBACK_ASPECT = 328 / 1122;
 
 /**
- * 打字时站在稿纸右侧的人物。指针事件全部穿透，不挡输入、选区和右键。
+ * 打字时站在稿纸**左侧**的人物（原素材朝左，CSS 里镜像成面朝正文）。指针事件全部
+ * 穿透，不挡输入、选区和右键。
  * 父元素须是 position: relative 的编辑区（.editor-area 或沉浸模式的 .im-stage）。
+ *
+ * 因为父元素就是编辑区，而编辑区排在左侧栏之后，所以侧栏收起 / 拖宽时这块立绘
+ * 自动跟着挪，不需要任何监听。
  */
 export function PaperCompanion() {
   const visible = useStore((s) => s.companionVisible);

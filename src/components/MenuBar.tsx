@@ -115,10 +115,10 @@ export function MenuBar({ menus, right }: Props) {
   /*
    * 菜单开合与「在菜单之间切换」都只做一件事：量一次、把位置和尺寸写下去。
    *
-   * 这里原先有一套 requestAnimationFrame 双帧 + 过渡状态机，专门为了让面板在菜单
-   * 之间"滑过去"。代价是：光标扫过菜单栏时动画刚起步就被下一次切换打断，看起来卡；
-   * 而且每帧都要重新合成一次带阴影的面板。现在改成瞬时跳转，一套状态机、一个 ref
-   * 生成号、一次 rAF 全都不需要了。
+   * 滑动效果交给 CSS 的 transition（见 shell.css 的 .menu-pop）——量出目标位置、
+   * 写进 transform，剩下由合成器插值。**不再需要**当年那套 requestAnimationFrame
+   * 双帧状态机：它存在的理由是「WebKit 下过渡被打断就卡」，而 Chromium 会从当前位置
+   * 平滑改道，光标的连续悬停自然就是连续的。状态机越少越好。
    */
   useLayoutEffect(() => {
     if (open === null) {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { countWords, formatNumber, type CountMode } from "../lib/wordcount";
+import { noteTotalWords } from "../lib/writingStats";
 
 export function StatusBar({ cursor }: { cursor: { line: number; col: number; selLen: number } }) {
   const activePath = useStore((s) => s.activePath);
@@ -23,6 +24,14 @@ export function StatusBar({ cursor }: { cursor: { line: number; col: number; sel
     (sum, c) => sum + (activePath && c.path === activePath ? words : c.words),
     0,
   );
+
+  /*
+   * 把全书字数喂给写作统计（挂件气泡里的「今日已写」就是它的净增累加）。
+   * 这里是最省事的接缝：全书字数本来就在这一行算好了，统计那边不必再扫一遍文稿。
+   */
+  useEffect(() => {
+    noteTotalWords(total, root);
+  }, [total, root]);
 
   const cycle = () => {
     const order: CountMode[] = ["cjk-word", "char", "paragraph"];

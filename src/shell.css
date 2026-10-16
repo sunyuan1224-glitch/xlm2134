@@ -50,13 +50,28 @@
   z-index: 100;
   border-radius: var(--r-md);
   box-shadow: 0 10px 28px rgba(59, 50, 55, 0.16), var(--glow);
+  /* 切换菜单时滑过去 + 变形；只动合成器能插值的属性，不碰 left/top 免得重排版 */
+  transition: transform 0.16s var(--ease), width 0.16s var(--ease), height 0.16s var(--ease);
+  /* 只在「打开」那一下淡入：菜单之间切换时元素是复用的，不会重放 */
+  animation: menu-pop-in 0.12s var(--ease);
+}
+
+@keyframes menu-pop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /*
- * 这里**故意没有动画**：菜单面板不做淡入，也不做菜单之间切换时的滑动。
- * 理由：光标扫过菜单栏时，动画每隔几毫秒就要被下一次位置变更打断重来，
- * 在 WebKit 里表现为明显的顿挫（打包成 AppImage 后更明显），而它带来的观感
- * 收益几乎为零。改成瞬时跳转后，切换只改一次 transform，不再有每帧的合成开销。
+ * 关于上面那条过渡：这里原本**故意没有动画**，注释写着「光标扫过菜单栏时动画每隔
+ * 几毫秒被下一次位置变更打断重来，在 WebKit 里表现为明显顿挫」。那个判断在当时是对的
+ * ——WebKitGTK 只给 31fps，动画刚起步就被打断，每帧还要重新合成一次带阴影的面板。
+ * 换到 Electron（Chromium，实测 180fps）之后前提变了：过渡会从**当前实际位置**平滑
+ * 改道，扫过菜单栏时是连续的，所以把它加回来。相应地，当年那套 requestAnimationFrame
+ * 双帧状态机也不需要了（见 MenuBar.tsx）。
  */
 
 .menu-pop-clip {

@@ -11,8 +11,9 @@
  *   - 引用/列表/删段：文档内容断言；
  *   - 对话框类（Ctrl+K / Ctrl+Shift+I / Ctrl+P / Ctrl+,）：DOM 里必须出现 .modal-mask；
  *   - 视图类（Ctrl+/ F8 F9 Ctrl+Shift+L/B）：读 store；
- *   - F11：测试页没有 Tauri（isDesktop() === false），只能断言「按键被处理、给出提示、
- *     不抛错」；真机全屏另由 capabilities 断言 + 人工确认（见用例末尾的说明）；
+ *   - F11：测试页没有桌面后端（isDesktop() === false），只能断言「按键被处理、给出提示、
+ *     不抛错」；真机的全屏开关由 scripts/test-vault.mjs 里那条「前端命令 ↔ 后端命令」
+ *     交叉校验兜住，实际窗口行为在打包后的桌面版里确认；
  *   - Alt+↑/↓：CodeMirror defaultKeymap 的 moveLineUp/moveLineDown，断言行真的换了位置。
  *
  * 每条用例单独 PASS/FAIL（输出 `CASE PASS: …` / `CASE FAIL: …`），最后只发一条总判决，
@@ -26,7 +27,6 @@ import App from "../src/App";
 import { useStore } from "../src/store";
 import { api, type FileNode } from "../src/api";
 import { SHORTCUTS } from "../src/components/HelpDialog";
-import capabilities from "../src-tauri/capabilities/default.json";
 import "../src/styles.css";
 import "../src/shell.css";
 
@@ -1023,21 +1023,12 @@ async function run() {
   });
 
   /*
-   * 真机全屏走的是 Tauri 的 set_fullscreen 命令，权限清单编译进二进制，
-   * WebKit 页面里既没有 Tauri 也没有办法验证窗口状态 —— 这里只能断言
-   * 「权限确实补上了」，真正的全屏开关只能在打包后的桌面版里人工确认。
+   * 这里原来断言的是 src-tauri 的 ACL 里补了 allow-set-fullscreen / allow-is-fullscreen。
+   * 换成 Electron 之后**没有 ACL 这层了**：主进程直接实现命令，前端通过 preload 桥调用。
+   * 所以那条断言跟着 Tauri 一起删了；「前端要的命令后端到底有没有」改由
+   * scripts/test-vault.mjs 里那条交叉校验兜住（它比原来的 ACL 检查更宽：覆盖全部命令）。
+   * 窗口真的会不会全屏，只能在打包后的桌面版里确认。
    */
-  await ck("capabilities/default.json 含 core:window:allow-set-fullscreen / allow-is-fullscreen", () => {
-    const perms = (capabilities as { permissions?: string[] }).permissions ?? [];
-    assert(
-      perms.includes("core:window:allow-set-fullscreen"),
-      `缺少 core:window:allow-set-fullscreen（F11 会失败）：${JSON.stringify(perms)}`,
-    );
-    assert(
-      perms.includes("core:window:allow-is-fullscreen") || perms.includes("core:default"),
-      `缺少读取全屏状态的权限：${JSON.stringify(perms)}`,
-    );
-  });
 
   /* ---------------- 反向用例：别把普通按键当成快捷键 ---------------- */
 

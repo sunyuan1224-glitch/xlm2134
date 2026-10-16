@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { noteEdit } from "./lib/writingStats";
 import { api, isDesktop, type FileNode, type Workspace } from "./api";
 import { isChapterFile } from "./lib/chapter";
 import {
@@ -404,6 +405,8 @@ export const useStore = create<AppState>((set, get) => ({
   setActive: (path) => set({ activePath: path }),
 
   setContent: (path, content) => {
+    // 只记「有人在敲」，具体字数由 StatusBar 那边喂（它本来就算着全书字数）
+    noteEdit();
     const st = get();
     // 内容没变就什么都不做：新对象 + 新 Set 会让订阅者白重渲染，
     // 还会把「其实没改」的路径标成脏，Ctrl+S 时白写一遍磁盘。

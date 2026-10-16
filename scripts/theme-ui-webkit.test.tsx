@@ -59,12 +59,12 @@ async function run() {
   await wait();
 
   /*
-   * 回归：菜单之间切换必须「瞬时」——不许有过渡/动画，且一帧之内就到位。
+   * 菜单之间的过渡：现在是**故意**有动画的（在菜单之间滑过去 + 打开时淡入一次）。
    *
-   * 这条盯的是曾经的 sliding 设计：面板用 transform 过渡滑到下一个菜单下面，配着
-   * MenuBar 里的双 requestAnimationFrame 状态机。光标快速扫过菜单栏时动画刚起步就被
-   * 打断，看起来卡顿；而且每帧都要重新合成一次带阴影的面板。现在要求：内容立刻换、
-   * 位置一帧到位、面板和菜单栏按钮的 computed 过渡时长都是 0s。
+   * 这里原先恰好相反——断言「不许有过渡、不许有动画、一帧内必须到位」，理由是
+   * WebKitGTK 只给 31fps，动画刚起步就被下一次悬停打断，看着卡。换到 Electron 之后
+   * 那个前提没了，所以这条回归也跟着反过来：要验的不再是「没有动画」，而是
+   * 「内容立刻切换、面板确实在滑动、并且滑到位」。
    */
   {
     const roots = [...document.querySelectorAll<HTMLButtonElement>(".menu-root")];
@@ -73,26 +73,45 @@ async function run() {
     await wait();
     const pop = document.querySelector<HTMLElement>(".menu-pop");
     assert(pop, "点开第一个菜单后应该有面板");
-    const panelTransition = getComputedStyle(pop!).transitionDuration;
-    assert(panelTransition === "0s", `菜单面板不该有过渡，实际 transition-duration: ${panelTransition}`);
-    const panelAnimation = getComputedStyle(pop!).animationName;
-    assert(panelAnimation === "none", `菜单面板不该有动画，实际 animation-name: ${panelAnimation}`);
+
+    const style = getComputedStyle(pop!);
+    assert(
+      /transform/.test(style.transitionProperty) && parseFloat(style.transitionDuration) > 0,
+      `菜单面板应当有 transform 过渡（否则切换时滑不动），实际 property=${style.transitionProperty} duration=${style.transitionDuration}`,
+    );
+    assert(style.animationName !== "none", "菜单打开时应当有一次淡入");
+    // 菜单栏按钮本身仍然不做过渡 —— 这条没变，别顺手给它加上
     const rootTransition = getComputedStyle(roots[0]).transitionDuration;
-    assert(rootTransition === "0s", `菜单栏按钮不该有过渡，实际 transition-duration: ${rootTransition}`);
+    assert(rootTransition === "0s", `菜单栏按钮不该有过渡，实际 ${rootTransition}`);
 
     const before = pop!.getBoundingClientRect();
     const firstContent = pop!.textContent;
+    const wantLeft = roots[1].getBoundingClientRect().left;
+
     // React 的 onMouseEnter 建在 mouseout/mouseover 上，所以这里按浏览器的真实顺序发一对：
     // 先从第一个菜单 out 到第二个（relatedTarget 指明去处），再 over 第二个（指明来处）。
     roots[0].dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: roots[1] }));
     roots[1].dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: roots[0] }));
-    await new Promise((resolve) => requestAnimationFrame(() => resolve(null))); // 只给一帧
-    const after = pop!.getBoundingClientRect();
+
+
+    /*
+     * ⚠️ 「过渡中间那一帧的面板位置」这一层**在这个测试环境里验不了**，别在这儿断言：
+     * 实测这个 WebKitGTK 里 transform 过渡根本不跑（面板瞬移到位；直接写 style 也一样），
+     * 连对照 div 的 opacity 过渡也只走了一帧就跳完。也就是说这套夹具只能验
+     * 「过渡声明存在」和「最终落点对不对」，验不了「动得顺不顺」。
+     * 流畅度是在 Electron（Chromium）里量的：scripts/ 下没有对应脚本，
+     * 结论记在 README 的「渲染帧率」一节。
+     */
+    // 内容仍应「立刻」切换：给一帧让 React 把重渲染落下来
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     assert(pop!.textContent !== firstContent, "悬停到第二个菜单时面板内容应立刻切换");
-    const wantLeft = document.querySelectorAll<HTMLButtonElement>(".menu-root")[1].getBoundingClientRect().left;
+
+    // 过渡走完 → 准确落在第二个菜单正下方
+    await wait(300);
+    const after = pop!.getBoundingClientRect();
     assert(
       Math.abs(after.left - wantLeft) <= 2,
-      `面板应在一帧内落到第二个菜单正下方（期望约 ${Math.round(wantLeft)}，实际 ${Math.round(after.left)}）`,
+      `过渡结束后面板应落在第二个菜单正下方（期望 ${Math.round(wantLeft)}，实际 ${Math.round(after.left)}）`,
     );
     assert(after.left !== before.left, "面板位置确实变了（否则这条用例没验到切换）");
 
@@ -233,6 +252,38 @@ async function run() {
   click(".menu-item", "字体与排版…");
   await wait();
   assert(document.querySelector(".settings-mask"), "Typography must remain available in theme menu");
+
+  /*
+   * 弹窗右下角的小人：与右下角挂件换成同一张图，并且整块待在弹窗**右侧之外**、
+   * 与边框留出间隙（原来那张 dialog-thinker 是骑在边框上的）。
+   */
+  {
+    const thinker = document.querySelector<HTMLImageElement>(".modal-thinker");
+    assert(thinker, "弹窗右下角应当有思考角色");
+    if (!thinker!.complete) {
+      await new Promise<void>((resolve) => {
+        thinker!.addEventListener("load", () => resolve(), { once: true });
+        setTimeout(resolve, 2000);
+      });
+    }
+    const ratio = thinker!.naturalWidth / thinker!.naturalHeight;
+    assert(
+      Number.isFinite(ratio) && Math.abs(ratio - 1) < 0.02,
+      `应当用新的方形挂件角色图（旧的 dialog-thinker 是 603×771，比例 0.78），实际 ${thinker!.naturalWidth}×${thinker!.naturalHeight}`,
+    );
+    const modal = document.querySelector<HTMLElement>(".modal");
+    assert(modal, "应当有弹窗");
+    const tr = thinker!.getBoundingClientRect();
+    const mr = modal!.getBoundingClientRect();
+    assert(
+      tr.left >= mr.right + 6,
+      `小人应当整块在弹窗右侧之外、与边框留缝（弹窗右缘 ${Math.round(mr.right)}，小人左缘 ${Math.round(tr.left)}）`,
+    );
+    assert(
+      tr.right <= window.innerWidth && tr.bottom <= window.innerHeight && tr.top >= 0,
+      `小人应当完整落在窗口内（right ${Math.round(tr.right)} / innerWidth ${window.innerWidth}）`,
+    );
+  }
 
   /* ---------------- 字体下拉（Word 式 + 可搜索）与「滑块移除」 ---------------- */
 

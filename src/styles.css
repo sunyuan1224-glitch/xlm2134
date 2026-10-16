@@ -647,9 +647,11 @@ button {
   position: relative;
 }
 
-/* 稿纸右侧的伴读立绘：不挡点击。位置由 PaperCompanion 按空白宽度写入。
+/* 稿纸左侧的伴读立绘：不挡点击。位置由 PaperCompanion 按空白宽度写入。
    不要加位移/尺寸过渡，也不要加 filter：窗口从半屏拉到全屏时，WebKit
-   清不掉上一帧的图层，人物会叠成好几个。 */
+   清不掉上一帧的图层，人物会叠成好几个。
+   镜像同样不在这里做——transform 会把元素提到独立合成层，正是上面要躲开的坑，
+   所以那一下翻在素材里（paper-companion.png 已经是水平翻转过的）。 */
 .paper-companion {
   position: absolute;
   bottom: 0;
@@ -933,20 +935,37 @@ button {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  border: 2px solid #c9a8f3;
+  border: 2px solid #b9a6f6;
   background: var(--bg-panel);
 }
 
 .modal-thinker {
   position: absolute;
   z-index: 2;
-  width: 112px;
+  width: 108px;
   height: auto;
-  right: -102px;
+  /*
+   * 挪到弹窗**右侧之外**，留一段间隙：
+   * 原来写的是 right: -102px / bottom: 0 —— 紧贴弹窗右下角、并且骑在边框上，
+   * 小人和边框糊在一起。改成 left: 100% + 12px 之后它整块都在弹窗外侧，
+   * 与边框之间始终有 12px 的缝。
+   */
+  left: calc(100% + 12px);
   bottom: 0;
   pointer-events: none;
   user-select: none;
   filter: drop-shadow(0 8px 14px rgba(90, 50, 70, 0.16));
+}
+
+/*
+ * 窗口窄到放不下时就别硬塞：弹窗最宽 560px 且居中，右侧要留出 108px 人 + 12px 缝，
+ * 也就是窗口至少要 ~800px。以前写 right:-102px 时这里会直接糊到窗口外面去，
+ * 现在是整块隐藏——宁可不显示，也不要露半个残影在边框上。
+ */
+@media (max-width: 860px) {
+  .modal-thinker {
+    display: none;
+  }
 }
 
 .modal {

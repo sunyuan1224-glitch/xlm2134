@@ -73,7 +73,7 @@ DOCX 走 OOXML 部件，EPUB 走 OCF（`mimetype` 首项 + 不压缩 + `META-INF
 ```
 node scripts/test-docx-epub.mjs          # 中间层 + DOCX + EPUB 结构与行为测试
 node scripts/test-export-external.mjs    # 用 python3 zipfile + xmllint 做外部合规性体检
-cargo test --manifest-path src-tauri/Cargo.toml   # 含 write_binary_abs / base64 严格解码
+npm run test:vault   # 含 write_binary_abs / base64 严格解码（原 Rust 侧 cargo test 的对应物）
 ```
 
 覆盖范围：ZIP/OOXML/OCF 结构、mimetype 位置与压缩方式、XML 合法性与转义、

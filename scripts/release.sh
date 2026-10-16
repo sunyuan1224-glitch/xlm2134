@@ -4,7 +4,7 @@
 #
 #   scripts/release.sh 0.1.1 [release 说明文件]
 #
-# 一次做完：同步四处版本号 → 跑测试 → 离线打包 → 覆盖安装到 ~/AppImages
+# 一次做完：同步两处版本号（package.json / AboutDialog）→ 跑测试 → 打包 → 覆盖安装到 ~/AppImages
 #          → 提交并打 tag → 推送 → 建 GitHub release（只挂 AppImage）
 #
 # 前置：git 工作区干净；已装 gh 且 gh auth login 过；
@@ -21,11 +21,10 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 APPIMAGES="${HOME}/AppImages"
-BUNDLE="src-tauri/target/release/bundle/appimage"
+BUNDLE="release"
 
 export https_proxy="${https_proxy:-http://127.0.0.1:7897}"
 export http_proxy="${http_proxy:-http://127.0.0.1:7897}"
-export CARGO_NET_OFFLINE=1
 
 step() { printf '\n== %s ==\n' "$*"; }
 
@@ -53,14 +52,6 @@ def patch_json(path):
     print(f"  {path} -> {ver}")
 
 patch_json("package.json")
-patch_json("src-tauri/tauri.conf.json")
-
-p = pathlib.Path("src-tauri/Cargo.toml")
-s = p.read_text(encoding="utf-8")
-s2 = re.sub(r'(?m)^(version\s*=\s*")[^"]+(")', r"\g<1>" + ver + r"\g<2>", s, count=1)
-assert s2 != s, "Cargo.toml 里没找到 [package] 的 version"
-p.write_text(s2, encoding="utf-8")
-print(f"  src-tauri/Cargo.toml -> {ver}")
 
 p = pathlib.Path("src/components/AboutDialog.tsx")
 s = p.read_text(encoding="utf-8")

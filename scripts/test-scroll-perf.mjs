@@ -12,7 +12,7 @@ await build({
   bundle: true,
   platform: "browser",
   format: "iife",
-  loader: { ".woff": "dataurl", ".woff2": "dataurl", ".ttf": "dataurl", ".png": "dataurl" },
+  loader: { ".woff": "dataurl", ".woff2": "dataurl", ".ttf": "dataurl", ".png": "dataurl", ".mp3": "dataurl" },
   logLevel: "warning",
 });
 await writeFile(

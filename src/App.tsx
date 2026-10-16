@@ -15,13 +15,13 @@ import { createPortal } from "react-dom";
 import { EditorView } from "@codemirror/view";
 import { undo, redo } from "@codemirror/commands";
 import { openSearchPanel } from "@codemirror/search";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStore } from "./store";
 import { api, isDesktop } from "./api";
 import { TabBar } from "./components/TabBar";
 import { StatusBar } from "./components/StatusBar";
 import { Editor } from "./editor/Editor";
 import { PaperCompanion } from "./components/PaperCompanion";
+import { PaperWidget } from "./components/PaperWidget";
 import { splitCurrent, createNextChapter } from "./lib/chapterOps";
 import { ImmersiveEditor } from "./components/ImmersiveEditor";
 import { ContextMenu } from "./components/ContextMenu";
@@ -44,6 +44,7 @@ import {
 } from "./lib/exportActions";
 import { resolveLink, findAnchorPos } from "./lib/links";
 import { setTypography, useTypography } from "./lib/typography";
+import { toggleWidget, useWidget } from "./lib/paperWidget";
 import { setTheme, useTheme } from "./lib/theme";
 import { epubVolumeRef, groupItemsByVolume, isBookOutlinePath } from "./lib/volume";
 import { bookTitleFrom } from "./lib/bookOutline";
@@ -80,8 +81,7 @@ async function openExternal(href: string): Promise<void> {
   if (/^https?:/i.test(href)) {
     if (isDesktop()) {
       try {
-        const { openUrl } = await import("@tauri-apps/plugin-opener");
-        await openUrl(href);
+        await api.openUrl(href);
         return;
       } catch {
         /* 落到下面的 window.open */
@@ -115,6 +115,7 @@ export default function App() {
   const toggleTypewriterMode = useStore((s) => s.toggleTypewriterMode);
   const typography = useTypography();
   const theme = useTheme();
+  const widget = useWidget();
 
   const viewRef = useRef<EditorView | null>(null);
   const [menu, setMenu] = useState<
@@ -788,6 +789,10 @@ export default function App() {
         { label: "左侧栏", shortcut: "Ctrl+Shift+L", checked: sidebarOpen, onClick: () => toggleSidebar() },
         { label: "工作区搜索", checked: sidebarOpen && sidebarTab === "search", onClick: () => useStore.getState().openSidebarTab("search") },
         "separator",
+        { title: "挂件" },
+        // 右下角的小鸭挂件。菜单里也能「隐藏挂件」，藏起来后从这里唤回
+        { label: "小鸭挂件", checked: widget.visible, onClick: () => toggleWidget() },
+        "separator",
         { title: "窗口" },
         // keepOpen：连点调字号时菜单不关，方便一直按
         { label: "放大字号", shortcut: "Ctrl+Shift+= / 滚轮", keepOpen: true, onClick: () => zoomBy(2) },
@@ -976,6 +981,9 @@ export default function App() {
 
       <StatusBar cursor={cursor} />
 
+      {/* 右下角的小鸭挂件：fixed 定位，不占 .app 的流式布局 */}
+      <PaperWidget />
+
       {menu && (
         <ContextMenu
           x={menu.x}
@@ -1051,9 +1059,8 @@ async function toggleFullscreen(): Promise<void> {
     return;
   }
   try {
-    const win = getCurrentWindow();
-    const full = await win.isFullscreen();
-    await win.setFullscreen(!full);
+    const full = await api.isFullscreen();
+    await api.setFullscreen(!full);
   } catch (e) {
     useStore.getState().setStatus(`全屏切换失败：${String(e)}`);
   }

@@ -1,0 +1,458 @@
+/*
+ * 右下角小鸭挂件。配色全部走主题变量（玫红 --accent / 面板 --bg-panel / 描边 --border），
+ * 所以「主题 → 粉白 / 暗色」切换时挂件跟着走，不另造一套颜色。
+ *
+ * 位置贴窗口右下角（与参考项目一致）。左侧那份「贴左侧栏的立绘」是伴读立绘
+ * （PaperCompanion + lib/paperCompanion.ts），两者互不相干，别把定位逻辑混在一起。
+ *
+ * 尺寸公式照搬参考项目（它写成 --dshw-base，这边是 --pw-base）：
+ *   clamp(下限, min(200px, min(100vw,100vh) * 0.22) * scale, 上限)
+ * 也就是「窗口越小越小、随 scale 线性放大、两头有钳制」，scale 由设置面板驱动。
+ */
+
+.pw-root {
+  position: fixed;
+  right: 0;
+  /* 让开 24px 的状态栏 */
+  bottom: 24px;
+  /* 压过正文与编辑器内浮层，但低于顶部菜单栏(40)、状态栏(50)和弹窗(100) */
+  z-index: 35;
+  /* 这是个 200px 见方的方块：透明角落不能吃掉正文的点击 */
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  /*
+   * 下限压到 80px：小窗口下基准本来就小，下限留太高会把最小档悄悄钳住，
+   * 结果「拖到最小」和「再小一档」看起来一样大（用例里那条尺寸倍数断言会因此报红）。
+   */
+  --pw-base: clamp(
+    80px,
+    calc(min(200px, min(100vw, 100vh) * 0.22) * var(--widget-scale, 1)),
+    560px
+  );
+  width: var(--pw-base);
+  height: var(--pw-base);
+}
+
+/*
+ * 立绘 + 气泡的公共外壳。
+ * **压扁动画作用在这一层**（不是 .pw-img）：气泡也在这一层里面，于是点按时
+ * 气泡跟着人物一起抖 —— 参考项目就是这么做的（鲸鱼本体和气泡同属被压扁的 div）。
+ */
+.pw-figure {
+  position: absolute;
+  inset: 0;
+  transform-origin: center bottom;
+  /* 松手回弹慢一点、按下压扁几乎瞬时，观感上才「Q弹」 */
+  transition: transform 0.18s var(--ease);
+}
+
+.pw-figure.is-pressed {
+  /* 与参考项目同一个压扁量 */
+  transform: scaleY(0.88) scaleX(1.05);
+  transition-duration: 0.06s;
+}
+
+.pw-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: auto;
+  cursor: pointer;
+  -webkit-user-drag: none;
+}
+
+/* ---------- 菜单按钮（悬停淡入，与参考项目一致） ---------- */
+
+.pw-menu-btn {
+  position: absolute;
+  /*
+   * 右上角，紧贴角上：原来 40% 高度那块压在人物身上（实测 26×26 有 46% 盖住立绘）。
+   *
+   * 位置用 1px/2px 这种极小偏移，是因为**尺寸必须跟着挂件走**（见下面 width 的说明）：
+   * 只要偏移和尺寸都随挂件等比，按钮在源图上覆盖的那块区域就恒定，也就不会
+   * 「挂件调小了反而盖住耳朵那撮头发」。实测这样在最难的最小档也是 0% 覆盖。
+   */
+  top: 1px;
+  right: 2px;
+  /*
+   * 尺寸跟着 --widget-scale 走，两端 clamp 住：
+   *   · 不跟的话，挂件缩到 0.7 时仍是 26px，按比例等于在源图上吃掉 80px 见方
+   *     —— 正好盖住猫耳那撮头发（实测 22–34% 覆盖），这正是「接触到头发」的来源；
+   *   · 18px 是下限，再小就不好点了；32px 是上限，避免大挂件上出现一个巨型按钮。
+   */
+  width: clamp(18px, calc(26px * var(--widget-scale, 1)), 32px);
+  height: clamp(18px, calc(26px * var(--widget-scale, 1)), 32px);
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: rgba(172, 63, 112, 0.85);
+  cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s ease, background var(--dur) var(--ease);
+}
+
+.pw-root:hover .pw-menu-btn,
+.pw-menu-btn.is-visible,
+.pw-menu-btn:focus-visible {
+  opacity: 1;
+}
+
+.pw-menu-btn:hover {
+  background: var(--accent);
+}
+
+.pw-menu-btn span {
+  display: block;
+  /* 百分比而非定宽：按钮在 18–32px 之间缩放时，横条要跟着成比例 */
+  width: 54%;
+  height: 2px;
+  background: #fff;
+  border-radius: 1px;
+}
+
+/* ---------- 菜单 ---------- */
+
+/*
+ * 菜单开在挂件左侧。
+ *
+ * 位置**不用百分比锚定**：`right: calc(100% + 8px)` 是贴在 .pw-root 的**左缘**上的，
+ * 而 .pw-root 是 right:0 的方块——它一放大，左缘就往左跑，菜单跟着滑走。表现就是
+ * 菜单里拖「大小」滑块时，滑块在光标底下往外溜，根本调不准。
+ * 所以位置改成**开菜单那一刻量一次、按视口坐标钉死**（PaperWidget 里算好写进内联样式），
+ * 挂件在菜单背后怎么长都不影响它。这里的值只是没量到时的兜底。
+ */
+.pw-menu {
+  position: fixed;
+  right: 8px;
+  bottom: 40px;
+  width: 232px;
+  box-sizing: border-box;
+  padding: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: 0 10px 28px rgba(59, 50, 55, 0.16), var(--glow);
+  pointer-events: auto;
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.pw-menu-section + .pw-menu-section {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.pw-menu-title {
+  font-size: 11px;
+  color: var(--fg-dim);
+  padding: 2px 2px 4px;
+  letter-spacing: 0.5px;
+}
+
+.pw-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 2px;
+}
+
+.pw-menu-label {
+  flex: none;
+  width: 48px;
+  color: var(--fg-dim);
+}
+
+.pw-range {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.pw-number {
+  width: 44px;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--accent);
+  background: var(--bg-editor);
+  border: 1px solid rgba(172, 63, 112, 0.4);
+  border-radius: var(--r-sm);
+  outline: none;
+  /* 去掉数字框右边的上下箭头：这个框是配着滑块用的，箭头又占地方又容易误点 */
+  -webkit-appearance: none;
+  appearance: textfield;
+  text-align: center;
+}
+
+.pw-number::-webkit-inner-spin-button,
+.pw-number::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.pw-number:focus {
+  border-color: var(--accent-dim);
+  box-shadow: var(--glow);
+}
+
+.pw-suffix {
+  flex: none;
+  min-width: 34px;
+  text-align: right;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.pw-check {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.pw-btn {
+  flex: 1;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--fg);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+    transform 0.09s var(--ease);
+}
+
+.pw-btn:hover {
+  background: var(--bg-active);
+  border-color: var(--accent-dim);
+}
+
+.pw-btn:active {
+  transform: var(--press);
+}
+
+/* 音效失败时在菜单底部摊开的说明（「点了没声」不该只能靠猜） */
+.pw-menu-err {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+/* 拖动中：跟手的光标 + 人物本身不再做压扁过渡（拖动时它只会互相打架） */
+.pw-root.is-dragging .pw-figure {
+  transition: none;
+}
+
+.pw-root.is-dragging .pw-img {
+  cursor: grabbing;
+}
+
+.pw-img {
+  cursor: grab;
+}
+
+/* ---------- 点一下冒出来的气泡 ---------- */
+
+/*
+ * 版式照着参考项目的气泡来：它也是三行——小标签 / 大数字 / 小字说明（label / amount / hint），
+ * 点一下就冒、5 秒自动收（它的 BUBBLE_MS = 5000，这里同名常量跟着走）。
+ * 配色整套换成 MyNovel 的暖白柔粉：粉白面板底、玫红数字、柔粉描边——不引新颜色。
+ *
+ * 与参考项目的差别只有实现手段：它把气泡画在一个 1026×700 的 SVG 画布上（为了和鲸鱼本体
+ * 严格同步缩放），这里用普通 DOM + CSS 画。本项目通篇 DOM/CSS，不值得为此引入一套画布坐标系。
+ *
+ * pointer-events: none —— 气泡浮在正文上方，绝不能挡住输入和选区（参考项目也是这样）。
+ */
+.pw-bubble {
+  position: absolute;
+  /* 与 PaperWidget 里的 BUBBLE_W 保持一致 */
+  width: 176px;
+  box-sizing: border-box;
+  padding: 10px 12px 11px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 22px rgba(59, 50, 55, 0.14), var(--glow);
+  font-family: var(--font-ui);
+  line-height: 1.4;
+  /* 可点：点一下把正文交叉淡化成彩蛋。代价是它显示的那几秒会吃掉它底下的点击 */
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 3;
+  /*
+   * 分段弹出，而不是一次淡入 —— 这是参考项目气泡的观感：
+   * 它的气泡由三层形状组成（两个小尾巴泡 + 主体），打开时按 0s / .13s / .26s
+   * 依次从 scale(.7) 弹到 1，文字再晚一步（.36s）淡入；关闭时顺序反过来。
+   * 这里用同一条思路排出三段：尾巴先冒 → 本体带一点回弹地鼓出来 → 文字最后浮现。
+   */
+  animation: pw-bubble-body 0.26s var(--ease) 0.07s both;
+}
+
+@keyframes pw-bubble-body {
+  from {
+    opacity: 0;
+    transform: scale(0.62);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 文字最后才浮现（对应参考项目里 .36s 才淡入的那一层） */
+.pw-bubble-label,
+.pw-bubble-amount,
+.pw-bubble-hint {
+  animation: pw-bubble-text 0.2s var(--ease) 0.2s both;
+}
+
+@keyframes pw-bubble-text {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 挂在人物左边（和菜单同侧）；左边塞不下时翻到右边，尾巴跟着换边 */
+/* 本体从「靠人物的那一侧」鼓出来：左边挂的从右缘长，右边挂的从左缘长 */
+.pw-bubble.is-left {
+  right: calc(100% + 10px);
+  bottom: 42%;
+  transform-origin: 100% 62%;
+}
+
+.pw-bubble.is-right {
+  left: calc(100% + 10px);
+  bottom: 42%;
+  transform-origin: 0% 62%;
+}
+
+/* 尾巴：旋转 45° 的小方块，只留朝外的两条边，看着才像「从气泡长出来的尖」 */
+.pw-bubble::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  /* 尾巴最先冒（贴着人物的那一头先长出来），缩放里要留着 45° 才能保持菱形 */
+  transform: rotate(45deg);
+  animation: pw-bubble-tail 0.18s var(--ease) both;
+}
+
+@keyframes pw-bubble-tail {
+  from {
+    opacity: 0;
+    transform: rotate(45deg) scale(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(45deg) scale(1);
+  }
+}
+
+.pw-bubble.is-left::after {
+  right: -6px;
+  top: 50%;
+  margin-top: -5px;
+  border-left: none;
+  border-bottom: none;
+}
+
+.pw-bubble.is-right::after {
+  left: -6px;
+  top: 50%;
+  margin-top: -5px;
+  border-right: none;
+  border-top: none;
+}
+
+/*
+ * 正文与彩蛋叠在同一个网格格里（grid-area 1/1）：容器高度自动取两者较高的那边，
+ * 交叉淡化时气泡尺寸不跳。
+ */
+.pw-bubble-body {
+  display: grid;
+  justify-items: start;
+}
+
+.pw-bubble-stat,
+.pw-bubble-egg {
+  grid-area: 1 / 1;
+  transition: opacity 0.24s var(--ease);
+}
+
+.pw-bubble-egg {
+  opacity: 0;
+  /* 彩蛋单独居中：正文那三行是左对齐的（标签/大数字/小字），彩蛋只有一句，居中最像「换了个状态」 */
+  justify-self: center;
+  text-align: center;
+  align-self: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+
+.pw-bubble.is-egg .pw-bubble-stat {
+  opacity: 0;
+}
+
+.pw-bubble.is-egg .pw-bubble-egg {
+  opacity: 1;
+}
+
+.pw-bubble-label {
+  font-size: 11px;
+  color: var(--fg-dim);
+  margin-bottom: 1px;
+}
+
+/* 今日已写：占大头 */
+.pw-bubble-amount {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+.pw-bubble-unit {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--fg-dim);
+  margin-left: 3px;
+  letter-spacing: 0;
+}
+
+/* 平均速度：小字 */
+.pw-bubble-hint {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}

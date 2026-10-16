@@ -7,17 +7,17 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "icons": "python3 scripts/build-icons.py",
-    "tauri": "tauri",
-    "app": "tauri dev",
-    "app:build": "tauri build",
-    "test": "npm run test:editor && npm run test:markdown && npm run test:complex && npm run test:export && npm run test:docx-epub && npm run test:volume && npm run test:format",
+    "app": "concurrently -k \"vite\" \"wait-on tcp:1420 && cross-env MYNOVEL_DEV_URL=http://localhost:1420 electron .\"",
+    "app:build": "npm run build && electron-builder --linux AppImage",
+    "test": "npm run test:editor && npm run test:markdown && npm run test:complex && npm run test:export && npm run test:docx-epub && npm run test:volume && npm run test:format && npm run test:vault",
     "test:editor": "node scripts/test-editor.mjs",
     "test:markdown": "node scripts/test-markdown.mjs",
     "test:complex": "node scripts/test-complex.mjs",
     "test:export": "node scripts/test-export.mjs",
     "test:docx-epub": "node scripts/test-docx-epub.mjs",
     "test:volume": "node scripts/test-volume.mjs",
-    "test:format": "node scripts/test-format.mjs"
+    "test:format": "node scripts/test-format.mjs",
+    "test:vault": "node scripts/test-vault.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.7.1",
@@ -27,9 +27,6 @@
     "@codemirror/state": "^6.5.0",
     "@codemirror/view": "^6.35.3",
     "@lezer/highlight": "^1.2.1",
-    "@tauri-apps/api": "^2.1.1",
-    "@tauri-apps/plugin-dialog": "^2.2.0",
-    "@tauri-apps/plugin-opener": "^2.2.5",
     "docx": "^9.8.1",
     "fflate": "^0.8.3",
     "react": "^19.0.0",
@@ -37,11 +34,40 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.1.0",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.2.5",
+    "cross-env": "^7.0.3",
+    "electron": "^44.8.0",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.7.2",
-    "vite": "^6.0.3"
-  }
+    "vite": "^6.0.3",
+    "wait-on": "^8.0.5"
+  },
+  "main": "electron/main.cjs",
+  "description": "MyNovel 二次元小说写作软件",
+  "build": {
+    "appId": "com.local.mynovel",
+    "productName": "MyNovel",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office",
+      "icon": "build/icon.png"
+    },
+    "appImage": {
+      "artifactName": "MyNovel_${version}_amd64.AppImage"
+    }
+  },
+  "author": "MyNovel"
 }

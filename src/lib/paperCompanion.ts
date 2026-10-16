@@ -1,10 +1,14 @@
 /**
- * 伴读立绘相对「稿纸」的落点。
+ * 伴读立绘相对编辑区的落点。
  *
- * 正文栏居中，宽度是 --editor-measure（当前 752px）。稿纸右侧还有空白时，
- * 人贴编辑区最右缘（窗口右缘），不挨着稿纸停在中间。
- * 窄窗口把空白挤没时，改贴编辑区右下角并缩小，只压住稿纸角落。
+ * 正文栏居中，宽度是 --editor-measure（当前 752px）。稿纸**左侧**还有空白时，
+ * 人贴编辑区最左缘（也就是左侧栏的右缘），不挨着稿纸停在中间。
+ * 窄窗口把空白挤没时，改贴编辑区左下角并缩小，只压住稿纸角落。
  * 两种位置都贴着底部，打字滚动时人还在。
+ *
+ * 左缘之所以天然「跟着左侧栏走」：这块立绘是 .editor-area 的子元素，而 .editor-area
+ * 在 .pane-main 里、排在左侧栏后面，侧栏收起或拖宽时 pane 自己就挪了，absolute 的
+ * 子元素跟着挪——不需要在这里读侧栏宽度，也不需要监听什么。
  */
 
 export type CompanionMode = "beside" | "tuck";
@@ -16,10 +20,15 @@ export interface CompanionLayout {
   height: number;
 }
 
-/** 贴右缘时留一点边，避免脚贴死在窗口边上 */
-const EDGE = 16;
 /**
- * 右侧空白窄于这个值时，不再缩成一条站在稿纸旁边，改去右下角。
+ * 贴左缘时留一点边，免得人物紧贴在侧栏的分隔线上。
+ * 导出是因为挂件的拖拽左界也要用同一条线（用户要求「和左边人物立绘一样」），
+ * 免得两处各写一个 16 然后慢慢走偏。
+ */
+export const COMPANION_EDGE = 16;
+const EDGE = COMPANION_EDGE;
+/**
+ * 左侧空白窄于这个值时，不再缩成一条站在稿纸旁边，改去左下角。
  * 88px 大约还能放下一个约 72px 宽的全身；再窄就会压到正文，不如让到角落。
  */
 const BESIDE_MIN_GUTTER = 88;
@@ -42,8 +51,8 @@ export function placeCompanion(opts: {
   const contentBox = Math.max(0, width - padLeft - padRight);
   const paper = Math.min(measure, contentBox);
   const paperLeft = padLeft + (contentBox - paper) / 2;
-  const paperRight = paperLeft + paper;
-  const gutter = width - paperRight;
+  // 站立的地方在稿纸左边，所以量的是左空白（原来量的是右空白）
+  const gutter = paperLeft;
 
   if (gutter >= BESIDE_MIN_GUTTER) {
     const maxW = gutter - EDGE;
@@ -52,7 +61,7 @@ export function placeCompanion(opts: {
     if (fitted.width < 72) return null;
     return {
       mode: "beside",
-      left: Math.max(0, Math.round(width - fitted.width - EDGE)),
+      left: EDGE,
       width: fitted.width,
       height: fitted.height,
     };
@@ -64,7 +73,7 @@ export function placeCompanion(opts: {
   if (fitted.width < 64) return null;
   return {
     mode: "tuck",
-    left: Math.max(0, Math.round(width - fitted.width)),
+    left: 0,
     width: fitted.width,
     height: fitted.height,
   };
